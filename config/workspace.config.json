@@ -1,0 +1,148 @@
+{
+  "project": "nova-aid",
+  "workspaceRoot": "C:/Users/Dell/Desktop/Nova aid",
+  "jira": {
+    "projectKey": "NOVA",
+    "siteUrl": "https://nova-aid.atlassian.net",
+    "note": "projectKey makes 'solve-ticket 150' mean NOVA-150. Set it to null to be asked each time."
+  },
+  "rules": {
+    "baseBranch": "main",
+    "branchPattern": "<Area>/<JIRA-KEY>/<ShortFeatureName>",
+    "planGate": "always",
+    "commitRequiresApproval": true,
+    "pushAllowed": false,
+    "askBeforeJiraWrite": true
+  },
+  "repos": [
+    {
+      "id": "api-server",
+      "path": "api-server/api-server",
+      "taskSkill": ".claude/skills/api-task-to-pr/SKILL.md",
+      "packageManager": "npm",
+      "owns": [
+        "REST routes",
+        "widget routes",
+        "Socket.IO events",
+        "RabbitMQ consumers",
+        "AI / RAG",
+        "schemas",
+        "permissions and seeders",
+        "config"
+      ],
+      "verify": [
+        "node --check <each changed .js file>",
+        "npm test"
+      ],
+      "run": [
+        "npm run dev"
+      ],
+      "knownIssues": "npm test has 18 failures on main (older LLM/function-calling tests and tests that need MongoDB). Compare with that baseline; do not fix unrelated failures.",
+      "areaPrefix": "Backend"
+    },
+    {
+      "id": "agent-panel",
+      "path": "agent-panel/agent-panel",
+      "taskSkill": ".claude/skills/agent-task-to-pr/SKILL.md",
+      "packageManager": "pnpm",
+      "owns": [
+        "support-agent console",
+        "conversations",
+        "contacts",
+        "companies",
+        "AI Studio",
+        "settings"
+      ],
+      "verify": [
+        "pnpm lint",
+        "pnpm build",
+        "pnpm test --run"
+      ],
+      "run": [
+        "pnpm dev --port 5174"
+      ],
+      "areaPrefix": "Agent"
+    },
+    {
+      "id": "admin-panel",
+      "path": "admin-panel",
+      "taskSkill": ".claude/skills/admin-task-to-pr/SKILL.md",
+      "packageManager": "pnpm",
+      "owns": [
+        "platform-operator dashboard",
+        "clients",
+        "users",
+        "roles and permissions",
+        "prompts",
+        "leads",
+        "careers",
+        "AI provider keys",
+        "usage"
+      ],
+      "verify": [
+        "pnpm lint",
+        "pnpm format:check",
+        "pnpm typecheck",
+        "pnpm build"
+      ],
+      "run": [
+        "pnpm dev"
+      ],
+      "areaPrefix": "Admin"
+    },
+    {
+      "id": "web-widget",
+      "path": "web-widget/web-widget",
+      "taskSkill": ".claude/skills/widget-task-to-pr/SKILL.md",
+      "packageManager": "npm",
+      "owns": [
+        "embeddable customer chat widget",
+        "embed script",
+        "visitor/lead/customer session flow"
+      ],
+      "verify": [
+        "npm run lint",
+        "npm run build",
+        "npm run test:api",
+        "npm run test:identify"
+      ],
+      "run": [
+        "npm run dev -- --port 4173"
+      ],
+      "areaPrefix": "Widget"
+    },
+    {
+      "id": "landing-website",
+      "path": "landing-website",
+      "taskSkill": null,
+      "packageManager": "npm",
+      "owns": [
+        "public marketing site",
+        "blog",
+        "careers",
+        "book-demo",
+        "legal pages"
+      ],
+      "verify": [
+        "npm run lint",
+        "npm run build"
+      ],
+      "run": [
+        "npm run dev"
+      ],
+      "knownIssues": "This repo has no task-to-pr skill yet. Use /nova-aid skill file 08 and STANDARDS.md until one exists.",
+      "areaPrefix": "Landing"
+    }
+  ],
+  "buildOrder": [
+    [
+      "api-server"
+    ],
+    [
+      "agent-panel",
+      "admin-panel",
+      "web-widget",
+      "landing-website"
+    ]
+  ]
+}

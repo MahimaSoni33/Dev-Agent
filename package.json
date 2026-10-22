@@ -1,0 +1,8 @@
+{
+  "name": "nova-dev-agent",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test hooks/rules.test.mjs scripts/worktree.test.mjs scripts/prompts.test.mjs"
+  }
+}
