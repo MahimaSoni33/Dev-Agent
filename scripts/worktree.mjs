@@ -53,11 +53,16 @@ export function removeWorktree({ repo, dest, force = false }) {
 
   // Remove the link first so nothing can follow it into the real node_modules
   const link = path.join(dest, "node_modules");
-  if (fs.existsSync(link) && fs.lstatSync(link).isSymbolicLink()) {
-    fs.unlinkSync(link);
-  }
+  const target = fs.existsSync(link) && fs.lstatSync(link).isSymbolicLink() ? fs.readlinkSync(link) : null;
+  if (target) fs.unlinkSync(link);
 
-  mustGit(repo, ["worktree", "remove", ...(force ? ["--force"] : []), dest]);
+  try {
+    mustGit(repo, ["worktree", "remove", ...(force ? ["--force"] : []), dest]);
+  } catch (err) {
+    // A refused removal (for example uncommitted work) must leave the worktree usable
+    if (target) fs.symlinkSync(target, link, process.platform === "win32" ? "junction" : "dir");
+    throw err;
+  }
   mustGit(repo, ["worktree", "prune"]);
   return { removed: dest, branchKept: true };
 }

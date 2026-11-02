@@ -105,3 +105,13 @@ test("removal refuses a worktree with uncommitted work unless forced", () => {
   removeWorktree({ repo, dest, force: true });
   assert.equal(fs.existsSync(dest), false);
 });
+
+test("a refused removal keeps the node_modules link", () => {
+  const dest = path.join(root, "wt", "linked");
+  createWorktree({ repo, branch: "Backend/NOVA-5/Linked", dest });
+  fs.writeFileSync(path.join(dest, "new.txt"), "uncommitted\n");
+  assert.throws(() => removeWorktree({ repo, dest }));
+  assert.ok(fs.existsSync(path.join(dest, "node_modules", "pkg", "index.js")));
+  removeWorktree({ repo, dest, force: true });
+  assert.ok(fs.existsSync(path.join(repo, "node_modules", "pkg", "index.js")));
+});

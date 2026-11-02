@@ -16,10 +16,13 @@ function segments(command) {
     .filter(Boolean);
 }
 
+// Leading VAR=value assignments of a command, for example `NOVA_COMMIT_OK=1 git commit`
+const ENV_PREFIX = /^((?:[A-Za-z_][A-Za-z0-9_]*=\S*\s+)+)/;
+
 // Drops leading VAR=value assignments and a `git -C path` / `git -c k=v` prefix
 function normalise(segment) {
   return segment
-    .replace(/^(?:[A-Za-z_][A-Za-z0-9_]*=\S*\s+)+/, "")
+    .replace(ENV_PREFIX, "")
     .replace(/^git(?:\s+(?:-C|-c)\s+(?:"[^"]*"|'[^']*'|\S+))+/, "git");
 }
 
@@ -31,6 +34,8 @@ const GIT_RULES = [
   [/^git\s+clean\s+.*-[a-z]*f/, "git clean -f would delete files. Ask the developer instead."],
   [/^git\s+checkout\s+(?:.*\s)?--\s/, "Discarding changes with git checkout -- is not allowed. Ask the developer instead."],
   [/^git\s+restore\b(?!.*--staged)/, "git restore would discard changes. Ask the developer instead."],
+  // Worktrees are created and removed only by scripts/worktree.mjs, which applies the same branch rules
+  [/^git\s+worktree\s+(remove|prune|move)\b/, "Worktrees are removed only with scripts/worktree.mjs, and only when the developer asks."],
 ];
 
 const GH_RULES = [
@@ -39,15 +44,8 @@ const GH_RULES = [
   [/^gh\s+api\b.*(-X|--method)\s*=?\s*(POST|PUT|PATCH|DELETE)\b/i, "Write calls through gh api are not allowed."],
 ];
 
-// Worktrees are created and removed only by scripts/worktree.mjs, which applies the same branch rules
-const WORKTREE_RULE = [
-  /^git\s+worktree\s+(remove|prune|move)\b/,
-  "Worktrees are removed only with scripts/worktree.mjs, and only when the developer asks.",
-];
-
-// Leading VAR=value assignments of a command, for example `NOVA_COMMIT_OK=1 git commit`
 function leadingEnv(segment) {
-  const match = /^((?:[A-Za-z_][A-Za-z0-9_]*=\S*\s+)+)/.exec(segment);
+  const match = ENV_PREFIX.exec(segment);
   const out = {};
   if (!match) return out;
   for (const assignment of match[1].trim().split(/\s+/)) {
@@ -65,7 +63,6 @@ function checkGit(seg, env) {
   for (const [re, reason] of GIT_RULES) {
     if (re.test(seg)) return reason;
   }
-  if (WORKTREE_RULE[0].test(seg)) return WORKTREE_RULE[1];
 
   if (/^git\s+commit\b/.test(seg) && !commitApproved(env)) {
     return "git commit is blocked until the developer approves it. After they approve, prefix the command with NOVA_COMMIT_OK=1. Otherwise give them the commit message.";
