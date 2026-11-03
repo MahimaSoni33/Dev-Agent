@@ -26,6 +26,25 @@ key also works ("free-text mode"), which is also the fallback when the Jira conn
 4. **Gate:** you choose which repos get a local commit.
 5. Writes `summary.md` with branches, results, PR text, manual checks, and your push and cleanup commands.
 
+## Providers
+
+The flow, agents, config and safety rules are provider-neutral. Each host gets a thin adapter.
+
+| Host | Install | Start |
+|---|---|---|
+| Claude Code | `claude --plugin-dir C:/NovaDevAgent` (no install) | `/dev-agent:solve-ticket PROJ-145` |
+| Antigravity | `node scripts/install.mjs --provider antigravity` in your workspace (`--scope global` for all) | `/solve-ticket PROJ-145` |
+
+For Antigravity the installer generates `.agents/skills/solve-ticket/SKILL.md` (with this folder's path written in),
+`.agents/agents/repo-builder|repo-reviewer/agent.md` (tools mapped to `run_command`, `view_file`, ...) and merges
+a `dev-agent` entry into `.agents/hooks.json`. Run it again after editing the skill or agents. The guard maps
+Antigravity's tool calls onto the same rules (`providers/tools.mjs`) and answers with `{"decision":"deny"}`.
+Another host means one more mapping in `providers/tools.mjs` and one more generator in `scripts/install.mjs`.
+
+Antigravity is built from its published docs and unit-tested, but not yet run in the real IDE. Check on first use:
+the hooks.json shape, that hooks also fire inside subagents (otherwise the builder is unguarded), and the
+subagents' default `sandbox` command policy (it may need `commandExecutionPolicy: auto` in `agent.md` to run tests).
+
 ## Configuration
 
 `node scripts/config.mjs` prints the resolved config. Lookup order: `--config <file>`, then
@@ -76,6 +95,8 @@ scripts/config.mjs             resolves config, applies defaults, profiles repos
 scripts/detect.mjs             read-only stack, verify and instruction detection
 scripts/worktree.mjs           creates and removes worktrees (tested against real throwaway git repos)
 hooks/                         safety guard: rules.mjs (logic), guard.mjs (hook), hooks.json
+providers/tools.mjs            per-provider tool-call mapping and guard replies
+scripts/install.mjs            generates the Antigravity skill, agents and hooks
 ```
 
 ## Safety guard (hooks, not just prompts)

@@ -1,6 +1,8 @@
-// PreToolUse hook. Claude Code sends the tool call as JSON on stdin.
-// Exit code 2 blocks the call and shows stderr to the model.
+// PreToolUse hook for Claude Code and Antigravity. The host sends the tool call as JSON on stdin; the event
+// shape tells the providers apart (see providers/tools.mjs).
+// Claude Code blocks with exit code 2 and stderr; Antigravity blocks with {"decision":"deny"} on stdout.
 import { check } from "./rules.mjs";
+import { normalizeToolCall, verdict } from "../providers/tools.mjs";
 
 let raw = "";
 process.stdin.setEncoding("utf8");
@@ -15,9 +17,8 @@ try {
   process.exit(0);
 }
 
-const reason = check(event.tool_name, event.tool_input ?? {}, process.env);
-if (reason) {
-  console.error(`Blocked by dev-agent: ${reason}`);
-  process.exit(2);
-}
-process.exit(0);
+const { provider, tool, input } = normalizeToolCall(event);
+const { stdout, stderr, code } = verdict(provider, check(tool, input, process.env));
+if (stdout) console.log(stdout);
+if (stderr) console.error(stderr);
+process.exit(code);
