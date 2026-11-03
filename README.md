@@ -1,62 +1,81 @@
-# nova-dev-agent
+# dev-agent
 
-An AI-DLC developer agent for Claude Code. You give it a Jira ticket; it plans the work across your repos,
-builds each repo in its own git worktree by following that repo's `*-task-to-pr` skill, verifies and reviews it,
-and hands you local branches plus PR text. You push and open the PRs.
+An AI-DLC developer agent for Claude Code. You give it a ticket (a Jira key or URL, or plain text); it plans the
+work across your repos, builds each repo in its own git worktree following that repo's own instructions, verifies
+and reviews it, and hands you local branches plus PR text. You push and open the PRs.
 
-## Status (version 0.2)
-
-| Phase | What | State |
-|---|---|---|
-| 1 | Plugin, repo config, safety hooks, Jira read | done |
-| 2 | Inception: ticket, repo choice, plan, approval gate | done |
-| 3 | Build one repo: worktree, builder agent, verify, report | built, first run on NOVA-162 (`agent-panel`) |
-| 4 | Several repos: order, contract handoff, review, commit gate, summary | built, **not yet run across several repos** |
-| 5 to 7 | Polish, pilot, make it global | not built |
+It works on any repo or set of repos, in any language. Nothing about a project is built in: it comes from an
+optional config file plus what the agent detects in each repo.
 
 ## Use it
 
-From the Nova aid folder:
+From your repo (or a folder holding several repos):
 
 ```bash
 claude --plugin-dir C:/NovaDevAgent
 ```
 
-Then `/nova-dev-agent:solve-ticket 145` (a bare number uses the project key in the config, `NOVA`).
+Then `/dev-agent:solve-ticket PROJ-145`. A bare number (`145`) uses `tracker.projectKey`. Plain text with no
+key also works ("free-text mode"), which is also the fallback when the Jira connector is unavailable.
 
-1. Rewrites any free-text request into a short brief, reviews the ticket (acceptance criteria checked, ambiguities
-   listed, code inspection scoped; stops with questions if criteria are vague), checks each repo, writes
-   `runs/NOVA-145/plan.md`. Builder and reviewer enforce minimal, pattern-matching changes with no unrelated edits.
+1. Rewrites any extra free text into a short brief, reviews the ticket (acceptance criteria checked, ambiguities
+   listed; stops with questions if criteria are vague), checks each repo, writes `<runs>/<KEY>/plan.md`.
 2. **Gate:** approve and build, approve plan only, change, or stop.
-3. For each repo (api-server first, then the callers in parallel): creates a worktree and branch, runs the
-   `repo-builder` agent, then the `repo-reviewer` agent (one fix round at most).
+3. For each repo, in `buildOrder` layers: creates a worktree and branch, runs the `repo-builder` agent, then the
+   `repo-reviewer` agent (one fix round at most).
 4. **Gate:** you choose which repos get a local commit.
-5. Writes `runs/NOVA-145/summary.md` with branches, results, PR text, manual checks, and your push and cleanup commands.
+5. Writes `summary.md` with branches, results, PR text, manual checks, and your push and cleanup commands.
 
-## How code changes reach the Nova aid repos
+## Configuration
 
-The plugin folder only holds instructions, config and plans. Code is written in git worktrees of the Nova aid
-repos, under `runs/<KEY>/worktrees/<repo>`, on new branches cut from the freshly fetched `main` with `--no-track`.
-Your own checkouts and uncommitted work are not touched. `node_modules` is linked from your checkout, not reinstalled.
-Branches live in the real repos, so `git push` from the worktree (run by you) publishes them.
+`node scripts/config.mjs` prints the resolved config. Lookup order: `--config <file>`, then
+`.dev-agent/config.json` in the current folder or a parent, then **zero-config**: the current folder is the repo,
+or every git repo directly inside it is.
+
+All keys are optional (see `config/example.config.json`):
+
+| Key | Meaning | Default |
+|---|---|---|
+| `project` | Label, also the runs sub-folder | folder name |
+| `tracker` | `{ type, projectKey }`; Jira site comes from the connector | jira, no key |
+| `runsDir` | Where plans, reports and worktrees go (outside every repo) | `~/.dev-agent/runs` |
+| `rules` | `baseBranch` (null: repo default), `branchPattern`, commit and push rules | see example |
+| `contextFiles` | Project-wide rules the agent reads once (ownership, contracts, auth) | none |
+| `repos[]` | `id`, `path`, `areaPrefix`, `owns`, `instructions`, `verify`, `run`, `knownIssues` | discovered |
+| `buildOrder` | Layers of repo ids; later layers build against earlier layers' interface | one layer |
+
+Per repo, anything not set is detected by `scripts/detect.mjs`: stack and package manager (Node, Go, Rust, Java,
+Python, Ruby, PHP), verify commands (package scripts, Makefile targets, stack defaults), and instruction files
+(a `*task*`/`*pr*` skill, `CLAUDE.md`, `AGENTS.md`, `CONTRIBUTING.md`, README).
+
+The Nova Aid setup is in `config/examples/nova-aid/` (copy both files into `<Nova aid folder>/.dev-agent/`).
+
+## How code changes reach your repos
+
+The plugin folder only holds instructions and scripts. Code is written in git worktrees of your repos, under
+`<runs>/<project>/<KEY>/worktrees/<repo>`, on new branches cut from the freshly fetched base with `--no-track`
+(or from the local default branch when a repo has no remote). Your checkouts and uncommitted work are not touched.
+`node_modules` is linked from your checkout (extra folders via `--link-dirs`). `git push` from the worktree,
+run by you, publishes the branch.
 
 ## What it cannot do
 
-- Run checks that need `.env`, MongoDB, RabbitMQ, Redis or a running server. Those become "Manual checks for the
-  developer" in the report, because the safety hooks block reading secrets.
+- Run checks that need `.env`, a database, a queue or a running server. Those become "Manual checks for the
+  developer", because the safety hooks block reading secrets.
 - Replace review: always read the diffs. The reviewer agent is a second opinion, not a guarantee.
 
 ## What is inside
 
 ```
 .claude-plugin/plugin.json     plugin manifest
-config/workspace.config.json   repos, verify commands, rules, Jira project (edit this for a new project)
+config/example.config.json     generic config example; config/examples/nova-aid has the Nova setup
 skills/solve-ticket/SKILL.md   the conductor: Inception and Construction
 agents/repo-builder.md         builds one repo in its worktree, writes a report
 agents/repo-reviewer.md        read-only review of that repo's diff
+scripts/config.mjs             resolves config, applies defaults, profiles repos
+scripts/detect.mjs             read-only stack, verify and instruction detection
 scripts/worktree.mjs           creates and removes worktrees (tested against real throwaway git repos)
 hooks/                         safety guard: rules.mjs (logic), guard.mjs (hook), hooks.json
-runs/                          plans, reports and worktrees per ticket (git-ignored)
 ```
 
 ## Safety guard (hooks, not just prompts)
@@ -64,7 +83,8 @@ runs/                          plans, reports and worktrees per ticket (git-igno
 Blocked for every tool call while the plugin is on:
 - `git push`, `git merge`, `git stash`, `git reset --hard`, `git clean -f`, discarding changes
 - `gh pr create/merge/...` and write calls through `gh api`
-- `git commit` unless prefixed with `NOVA_COMMIT_OK=1` (the conductor does that only after you approve) and `--no-verify`
+- `git commit` unless prefixed with `DEV_AGENT_COMMIT_OK=1` (the conductor does that only after you approve) and
+  `--no-verify`. The old `NOVA_COMMIT_OK` / `NOVA_DEV_ALLOW_COMMIT` names are still accepted.
 - `git add -A`, `-u` and `.` (files are staged by name)
 - creating a branch or worktree without `--no-track`; removing worktrees outside `scripts/worktree.mjs`
 - reading, copying or editing real `.env*` files (`.env.example` is fine)
@@ -72,10 +92,9 @@ Blocked for every tool call while the plugin is on:
 
 The commit marker prevents accidents; it is not a security boundary against someone deliberately typing it.
 
-Run all tests: `npm test` (guard, worktree, and prompt-structure tests).
+Run all tests: `npm test`.
 
-## Make it work for another project
+## Status (version 0.3)
 
-Copy `config/workspace.config.json`, then change the workspace root, Jira key, and the `repos` list
-(path, area prefix, task skill, verify and run commands). The hooks and scripts are generic. `skills/solve-ticket`
-still names Nova Aid and its `nova-aid` skill in a few places; making that wording config-driven is part of phase 7.
+Generic config, detection, free-text mode and renamed plugin are built and unit-tested. Not yet run end to end:
+a multi-repo run, a non-Node repo, and a run without Jira. Install as a user-level plugin once those pass.

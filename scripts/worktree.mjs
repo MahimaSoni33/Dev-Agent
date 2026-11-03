@@ -1,5 +1,5 @@
 // Creates and removes the git worktrees the agent builds in. The developer's own checkout is never touched.
-//   node worktree.mjs create --repo <path> --branch <name> --dest <path> [--base main] [--no-link-deps]
+//   node worktree.mjs create --repo <path> --branch <name> --dest <path> [--base <branch>] [--link-dirs a,b | --no-link-deps]
 //   node worktree.mjs remove --repo <path> --dest <path> [--force]
 // Prints one JSON object. Exits 1 with a message on stderr when something is wrong.
 import { spawnSync } from "node:child_process";
@@ -18,7 +18,19 @@ function mustGit(cwd, args) {
   return res.out;
 }
 
-export function createWorktree({ repo, branch, dest, base = "main", linkDeps = true }) {
+const linkType = process.platform === "win32" ? "junction" : "dir";
+
+// The repo's default branch: origin/HEAD, else a local main or master, else the checked-out branch
+function defaultBase(repo) {
+  const head = git(repo, ["symbolic-ref", "--short", "refs/remotes/origin/HEAD"]);
+  if (head.ok) return head.out.replace(/^origin\//, "");
+  for (const name of ["main", "master"]) {
+    if (git(repo, ["rev-parse", "--verify", "--quiet", `refs/heads/${name}`]).ok) return name;
+  }
+  return mustGit(repo, ["branch", "--show-current"]);
+}
+
+export function createWorktree({ repo, branch, dest, base, linkDirs = ["node_modules"] }) {
   repo = path.resolve(repo);
   dest = path.resolve(dest);
 
@@ -29,42 +41,57 @@ export function createWorktree({ repo, branch, dest, base = "main", linkDeps = t
     throw new Error(`Branch already exists: ${branch}`);
   }
 
-  // Always cut from the freshly fetched remote base, never from a stale local one
-  mustGit(repo, ["fetch", "origin", base]);
-  const baseSha = mustGit(repo, ["rev-parse", `origin/${base}`]);
+  base ??= defaultBase(repo);
+  // Cut from the freshly fetched remote base when there is a remote, never from a stale local one
+  const hasOrigin = git(repo, ["remote"]).out.split(/\s+/).includes("origin");
+  if (hasOrigin) mustGit(repo, ["fetch", "origin", base]);
+  const startPoint = hasOrigin ? `origin/${base}` : base;
+  const baseSha = mustGit(repo, ["rev-parse", startPoint]);
 
   fs.mkdirSync(path.dirname(dest), { recursive: true });
-  mustGit(repo, ["worktree", "add", "--no-track", "-b", branch, dest, `origin/${base}`]);
+  mustGit(repo, ["worktree", "add", "--no-track", "-b", branch, dest, startPoint]);
 
   // Reuse the installed packages instead of installing again
-  let depsLinked = false;
-  const modules = path.join(repo, "node_modules");
-  if (linkDeps && fs.existsSync(modules)) {
-    fs.symlinkSync(modules, path.join(dest, "node_modules"), process.platform === "win32" ? "junction" : "dir");
-    depsLinked = true;
+  const linked = [];
+  for (const dir of linkDirs) {
+    const source = path.join(repo, dir);
+    if (!fs.existsSync(source)) continue;
+    fs.symlinkSync(source, path.join(dest, dir), linkType);
+    linked.push(dir);
   }
 
-  return { repo, branch, base, baseSha, dest, depsLinked };
+  return { repo, branch, base, baseSha, dest, depsLinked: linked.length > 0, linked, fromRemote: hasOrigin };
 }
 
-export function removeWorktree({ repo, dest, force = false }) {
+export function removeWorktree({ repo, dest, force = false, linkDirs = ["node_modules"] }) {
   repo = path.resolve(repo);
   dest = path.resolve(dest);
 
-  // Remove the link first so nothing can follow it into the real node_modules
-  const link = path.join(dest, "node_modules");
-  const target = fs.existsSync(link) && fs.lstatSync(link).isSymbolicLink() ? fs.readlinkSync(link) : null;
-  if (target) fs.unlinkSync(link);
+  // Remove the links first so nothing can follow them into the real folders
+  const links = [];
+  for (const dir of linkDirs) {
+    const link = path.join(dest, dir);
+    if (fs.existsSync(link) && fs.lstatSync(link).isSymbolicLink()) {
+      links.push([link, fs.readlinkSync(link)]);
+      fs.unlinkSync(link);
+    }
+  }
 
   try {
     mustGit(repo, ["worktree", "remove", ...(force ? ["--force"] : []), dest]);
   } catch (err) {
     // A refused removal (for example uncommitted work) must leave the worktree usable
-    if (target) fs.symlinkSync(target, link, process.platform === "win32" ? "junction" : "dir");
+    for (const [link, target] of links) fs.symlinkSync(target, link, linkType);
     throw err;
   }
   mustGit(repo, ["worktree", "prune"]);
   return { removed: dest, branchKept: true };
+}
+
+// --no-link-deps links nothing; --link-dirs a,b replaces the default list
+function linkDirs(opts) {
+  if (opts["no-link-deps"]) return [];
+  return typeof opts["link-dirs"] === "string" ? opts["link-dirs"].split(",") : undefined;
 }
 
 function parseArgs(argv) {
@@ -89,11 +116,11 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
         repo: opts.repo,
         branch: opts.branch,
         dest: opts.dest,
-        base: opts.base ?? "main",
-        linkDeps: !opts["no-link-deps"],
+        base: opts.base,
+        linkDirs: linkDirs(opts),
       });
     } else if (command === "remove") {
-      result = removeWorktree({ repo: opts.repo, dest: opts.dest, force: Boolean(opts.force) });
+      result = removeWorktree({ repo: opts.repo, dest: opts.dest, force: Boolean(opts.force), linkDirs: linkDirs(opts) });
     } else {
       throw new Error("Usage: worktree.mjs create|remove --repo <path> --dest <path> ...");
     }

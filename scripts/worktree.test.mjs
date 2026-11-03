@@ -98,7 +98,7 @@ test("removal keeps the branch and never deletes the real node_modules", () => {
 
 test("removal refuses a worktree with uncommitted work unless forced", () => {
   const dest = path.join(root, "wt", "dirty");
-  createWorktree({ repo, branch: "Backend/NOVA-4/Dirty", dest, linkDeps: false });
+  createWorktree({ repo, branch: "Backend/NOVA-4/Dirty", dest, linkDirs: [] });
   fs.writeFileSync(path.join(dest, "new.txt"), "uncommitted\n");
   assert.throws(() => removeWorktree({ repo, dest }));
   assert.ok(fs.existsSync(dest));
@@ -114,4 +114,27 @@ test("a refused removal keeps the node_modules link", () => {
   assert.ok(fs.existsSync(path.join(dest, "node_modules", "pkg", "index.js")));
   removeWorktree({ repo, dest, force: true });
   assert.ok(fs.existsSync(path.join(repo, "node_modules", "pkg", "index.js")));
+});
+
+test("a repo without a remote is cut from its local default branch", () => {
+  const solo = path.join(root, "solo");
+  git(root, "init", "-q", "-b", "trunk", solo);
+  fs.writeFileSync(path.join(solo, "s.txt"), "s\n");
+  git(solo, "add", "s.txt");
+  git(solo, "commit", "-q", "-m", "init");
+  const dest = path.join(root, "wt", "solo");
+  const info = createWorktree({ repo: solo, branch: "KEY-1/Solo", dest });
+  assert.equal(info.base, "trunk");
+  assert.equal(info.fromRemote, false);
+  assert.ok(fs.existsSync(path.join(dest, "s.txt")));
+});
+
+test("extra dependency folders can be linked", () => {
+  fs.mkdirSync(path.join(repo, "vendor"), { recursive: true });
+  fs.writeFileSync(path.join(repo, "vendor", "v.txt"), "v\n");
+  const dest = path.join(root, "wt", "vendored");
+  const info = createWorktree({ repo, branch: "KEY-2/Vendored", dest, linkDirs: ["node_modules", "vendor"] });
+  assert.deepEqual(info.linked, ["node_modules", "vendor"]);
+  removeWorktree({ repo, dest, linkDirs: ["node_modules", "vendor"] });
+  assert.ok(fs.existsSync(path.join(repo, "vendor", "v.txt")), "real vendor folder must survive");
 });

@@ -16,7 +16,7 @@ function segments(command) {
     .filter(Boolean);
 }
 
-// Leading VAR=value assignments of a command, for example `NOVA_COMMIT_OK=1 git commit`
+// Leading VAR=value assignments of a command, for example `DEV_AGENT_COMMIT_OK=1 git commit`
 const ENV_PREFIX = /^((?:[A-Za-z_][A-Za-z0-9_]*=\S*\s+)+)/;
 
 // Drops leading VAR=value assignments and a `git -C path` / `git -c k=v` prefix
@@ -56,7 +56,8 @@ function leadingEnv(segment) {
 }
 
 function commitApproved(env) {
-  return env.NOVA_DEV_ALLOW_COMMIT === "1" || env.NOVA_COMMIT_OK === "1";
+  // The NOVA_* names are the old spelling, still accepted
+  return ["DEV_AGENT_ALLOW_COMMIT", "DEV_AGENT_COMMIT_OK", "NOVA_DEV_ALLOW_COMMIT", "NOVA_COMMIT_OK"].some((k) => env[k] === "1");
 }
 
 function checkGit(seg, env) {
@@ -65,7 +66,7 @@ function checkGit(seg, env) {
   }
 
   if (/^git\s+commit\b/.test(seg) && !commitApproved(env)) {
-    return "git commit is blocked until the developer approves it. After they approve, prefix the command with NOVA_COMMIT_OK=1. Otherwise give them the commit message.";
+    return "git commit is blocked until the developer approves it. After they approve, prefix the command with DEV_AGENT_COMMIT_OK=1. Otherwise give them the commit message.";
   }
 
   if (/^git\s+add\b/.test(seg) && /\s(-A|--all|-u|--update|\.)(\s|$)/.test(seg)) {

@@ -1,8 +1,5 @@
 {
-  "name": "nova-dev-agent",
-  "version": "0.2.0",
-  "description": "AI-DLC developer agent: turns a Jira ticket into reviewed, locally committed branches across several repos, following each repo's own task-to-pr skill.",
-  "author": {
-    "name": "Nova Aid"
-  }
+  "name": "dev-agent",
+  "version": "0.3.0",
+  "description": "AI-DLC developer agent: turns a ticket (Jira or free text) into reviewed, locally committed branches in any repo or set of repos, following each repo's own instructions."
 }

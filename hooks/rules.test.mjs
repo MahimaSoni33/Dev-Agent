@@ -43,16 +43,21 @@ test("destructive git commands are blocked", () => {
 
 test("commits are blocked until approved", () => {
   blocked('git commit -m "x"');
-  allowed('git commit -m "x"', { NOVA_DEV_ALLOW_COMMIT: "1" });
-  blocked('git commit -m "x" --no-verify', { NOVA_DEV_ALLOW_COMMIT: "1" });
+  allowed('git commit -m "x"', { DEV_AGENT_ALLOW_COMMIT: "1" });
+  blocked('git commit -m "x" --no-verify', { DEV_AGENT_ALLOW_COMMIT: "1" });
 });
 
 test("a commit is allowed only with the approval marker", () => {
-  allowed('NOVA_COMMIT_OK=1 git commit -m "NOVA-1: x"');
-  allowed('cd repo && NOVA_COMMIT_OK=1 git -C wt commit -m "x"');
-  blocked('NOVA_COMMIT_OK=0 git commit -m "x"');
-  blocked('git commit -m "NOVA_COMMIT_OK=1"');
-  blocked('NOVA_COMMIT_OK=1 git commit -m "x" --no-verify');
+  allowed('DEV_AGENT_COMMIT_OK=1 git commit -m "NOVA-1: x"');
+  allowed('cd repo && DEV_AGENT_COMMIT_OK=1 git -C wt commit -m "x"');
+  blocked('DEV_AGENT_COMMIT_OK=0 git commit -m "x"');
+  blocked('git commit -m "DEV_AGENT_COMMIT_OK=1"');
+  blocked('DEV_AGENT_COMMIT_OK=1 git commit -m "x" --no-verify');
+});
+
+test("the old NOVA_* approval names still work", () => {
+  allowed('NOVA_COMMIT_OK=1 git commit -m "x"');
+  allowed('git commit -m "x"', { NOVA_DEV_ALLOW_COMMIT: "1" });
 });
 
 test("files must be staged by name", () => {

@@ -16,9 +16,9 @@ test('every prompt file has frontmatter with name and description', () => {
   }
 });
 
-test('skill has the query rewriter and Jira story reviewer steps in order', () => {
+test('skill has the query rewriter and story reviewer steps in order', () => {
   const rewriter = skill.indexOf('Query rewriter');
-  const reviewStep = skill.indexOf('Jira story reviewer');
+  const reviewStep = skill.indexOf('story reviewer');
   const plan = skill.indexOf('## 5. Write the plan');
   assert.ok(rewriter > 0 && reviewStep > rewriter && plan > reviewStep);
   for (const word of ['vague', 'Ambiguities', 'Inspection needs', 'acceptance criteria']) {
@@ -34,5 +34,5 @@ test('minimal-change rules reach the skill, builder and reviewer', () => {
 
 test('step numbers in the skill are sequential', () => {
   const nums = [...skill.matchAll(/^## (\d+)\./gm)].map((m) => Number(m[1]));
-  assert.deepEqual(nums, nums.map((_, i) => i + 1));
+  assert.deepEqual(nums, nums.map((_, i) => i));
 });

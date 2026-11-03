@@ -1,0 +1,54 @@
+{
+  "project": "my-project",
+  "tracker": {
+    "type": "jira",
+    "projectKey": "PROJ"
+  },
+  "runsDir": "~/.dev-agent/runs",
+  "rules": {
+    "baseBranch": null,
+    "branchPattern": "<Area>/<KEY>/<ShortFeatureName>",
+    "planGate": "always",
+    "commitRequiresApproval": true,
+    "pushAllowed": false,
+    "askBeforeTrackerWrite": true
+  },
+  "contextFiles": [
+    "docs/AGENT_CONTEXT.md"
+  ],
+  "repos": [
+    {
+      "id": "backend",
+      "path": "backend",
+      "areaPrefix": "Backend",
+      "owns": [
+        "REST API",
+        "database schema"
+      ],
+      "instructions": [
+        "CLAUDE.md"
+      ],
+      "verify": [
+        "npm run lint",
+        "npm test"
+      ],
+      "run": [
+        "npm run dev"
+      ],
+      "knownIssues": "Optional: failures that exist on the base branch."
+    },
+    {
+      "id": "frontend",
+      "path": "frontend",
+      "areaPrefix": "Web"
+    }
+  ],
+  "buildOrder": [
+    [
+      "backend"
+    ],
+    [
+      "frontend"
+    ]
+  ]
+}

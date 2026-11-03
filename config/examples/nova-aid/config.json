@@ -1,24 +1,24 @@
 {
   "project": "nova-aid",
-  "workspaceRoot": "C:/Users/Dell/Desktop/Nova aid",
-  "jira": {
-    "projectKey": "NOVA",
-    "siteUrl": "https://nova-aid.atlassian.net",
-    "note": "projectKey makes 'solve-ticket 150' mean NOVA-150. Set it to null to be asked each time."
+  "tracker": {
+    "type": "jira",
+    "projectKey": "NOVA"
   },
   "rules": {
     "baseBranch": "main",
-    "branchPattern": "<Area>/<JIRA-KEY>/<ShortFeatureName>",
+    "branchPattern": "<Area>/<KEY>/<ShortFeatureName>",
     "planGate": "always",
     "commitRequiresApproval": true,
     "pushAllowed": false,
-    "askBeforeJiraWrite": true
+    "askBeforeTrackerWrite": true
   },
+  "contextFiles": [
+    ".dev-agent/context.md"
+  ],
   "repos": [
     {
       "id": "api-server",
       "path": "api-server/api-server",
-      "taskSkill": ".claude/skills/api-task-to-pr/SKILL.md",
       "packageManager": "npm",
       "owns": [
         "REST routes",
@@ -38,12 +38,14 @@
         "npm run dev"
       ],
       "knownIssues": "npm test has 18 failures on main (older LLM/function-calling tests and tests that need MongoDB). Compare with that baseline; do not fix unrelated failures.",
-      "areaPrefix": "Backend"
+      "areaPrefix": "Backend",
+      "instructions": [
+        ".claude/skills/api-task-to-pr/SKILL.md"
+      ]
     },
     {
       "id": "agent-panel",
       "path": "agent-panel/agent-panel",
-      "taskSkill": ".claude/skills/agent-task-to-pr/SKILL.md",
       "packageManager": "pnpm",
       "owns": [
         "support-agent console",
@@ -61,12 +63,14 @@
       "run": [
         "pnpm dev --port 5174"
       ],
-      "areaPrefix": "Agent"
+      "areaPrefix": "Agent",
+      "instructions": [
+        ".claude/skills/agent-task-to-pr/SKILL.md"
+      ]
     },
     {
       "id": "admin-panel",
       "path": "admin-panel",
-      "taskSkill": ".claude/skills/admin-task-to-pr/SKILL.md",
       "packageManager": "pnpm",
       "owns": [
         "platform-operator dashboard",
@@ -88,12 +92,14 @@
       "run": [
         "pnpm dev"
       ],
-      "areaPrefix": "Admin"
+      "areaPrefix": "Admin",
+      "instructions": [
+        ".claude/skills/admin-task-to-pr/SKILL.md"
+      ]
     },
     {
       "id": "web-widget",
       "path": "web-widget/web-widget",
-      "taskSkill": ".claude/skills/widget-task-to-pr/SKILL.md",
       "packageManager": "npm",
       "owns": [
         "embeddable customer chat widget",
@@ -109,12 +115,14 @@
       "run": [
         "npm run dev -- --port 4173"
       ],
-      "areaPrefix": "Widget"
+      "areaPrefix": "Widget",
+      "instructions": [
+        ".claude/skills/widget-task-to-pr/SKILL.md"
+      ]
     },
     {
       "id": "landing-website",
       "path": "landing-website",
-      "taskSkill": null,
       "packageManager": "npm",
       "owns": [
         "public marketing site",
@@ -131,7 +139,8 @@
         "npm run dev"
       ],
       "knownIssues": "This repo has no task-to-pr skill yet. Use /nova-aid skill file 08 and STANDARDS.md until one exists.",
-      "areaPrefix": "Landing"
+      "areaPrefix": "Landing",
+      "instructions": []
     }
   ],
   "buildOrder": [

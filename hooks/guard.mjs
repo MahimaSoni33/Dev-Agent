@@ -11,13 +11,13 @@ try {
   event = JSON.parse(raw);
 } catch {
   // Nothing to judge without a readable event
-  console.error("nova-dev-agent guard: could not read the hook input, allowing the call");
+  console.error("dev-agent guard: could not read the hook input, allowing the call");
   process.exit(0);
 }
 
 const reason = check(event.tool_name, event.tool_input ?? {}, process.env);
 if (reason) {
-  console.error(`Blocked by nova-dev-agent: ${reason}`);
+  console.error(`Blocked by dev-agent: ${reason}`);
   process.exit(2);
 }
 process.exit(0);
