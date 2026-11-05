@@ -3,6 +3,6 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test": "node --test hooks/rules.test.mjs scripts/worktree.test.mjs scripts/config.test.mjs scripts/prompts.test.mjs providers/tools.test.mjs scripts/install.test.mjs"
+    "test": "node --test hooks/rules.test.mjs scripts/worktree.test.mjs scripts/config.test.mjs scripts/prompts.test.mjs providers/tools.test.mjs scripts/install.test.mjs providers/usage.test.mjs"
   }
 }

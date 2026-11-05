@@ -45,3 +45,15 @@ test("a hooks file that is not JSON is left alone", () => {
   assert.throws(() => installAntigravity({ baseDir, pluginDir: "/p" }), /not valid JSON/);
   assert.equal(fs.readFileSync(path.join(baseDir, "hooks.json"), "utf8"), "{ nope");
 });
+
+test("probe hook is added on request and removed again without it", () => {
+  const baseDir = tmp();
+  installAntigravity({ baseDir, pluginDir: "C:/tools/dev-agent", probe: true });
+  const file = path.join(baseDir, "hooks.json");
+  const probed = JSON.parse(fs.readFileSync(file, "utf8"));
+  assert.match(probed["dev-agent-probe"].Stop[0].hooks[0].command, /hooks\/dump\.mjs/);
+  assert.ok(probed["dev-agent"].PreToolUse);
+
+  installAntigravity({ baseDir, pluginDir: "C:/tools/dev-agent" });
+  assert.equal(JSON.parse(fs.readFileSync(file, "utf8"))["dev-agent-probe"], undefined);
+});

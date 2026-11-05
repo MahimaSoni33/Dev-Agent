@@ -56,7 +56,7 @@ function agentFor(file) {
   ].join("\n");
 }
 
-function mergeHooks(file, pluginDir, written) {
+function mergeHooks(file, pluginDir, written, probe = false) {
   let hooks = {};
   try {
     hooks = JSON.parse(fs.readFileSync(file, "utf8").replace(/^﻿/, ""));
@@ -72,16 +72,23 @@ function mergeHooks(file, pluginDir, written) {
       },
     ],
   };
+  // Temporary: logs the raw events so the shape of Antigravity's session data can be read (hooks/dump.mjs)
+  if (probe) {
+    const dump = [{ hooks: [{ type: "command", command: `node "${posix(pluginDir)}/hooks/dump.mjs"`, timeout: 10 }] }];
+    hooks["dev-agent-probe"] = { PostToolUse: dump, Stop: dump };
+  } else {
+    delete hooks["dev-agent-probe"];
+  }
   write(file, `${JSON.stringify(hooks, null, 2)}\n`, written);
 }
 
-export function installAntigravity({ baseDir, pluginDir = PLUGIN_DIR }) {
+export function installAntigravity({ baseDir, pluginDir = PLUGIN_DIR, probe = false }) {
   const written = [];
   write(path.join(baseDir, "skills", "solve-ticket", "SKILL.md"), skillFor(pluginDir), written);
   for (const name of ["repo-builder", "repo-reviewer"]) {
     write(path.join(baseDir, "agents", name, "agent.md"), agentFor(`${name}.md`), written);
   }
-  mergeHooks(path.join(baseDir, "hooks.json"), pluginDir, written);
+  mergeHooks(path.join(baseDir, "hooks.json"), pluginDir, written, probe);
   return written;
 }
 
@@ -97,12 +104,12 @@ function parseArgs(argv) {
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   try {
     const opts = parseArgs(process.argv.slice(2));
-    if (opts.provider !== "antigravity") throw new Error("Usage: install.mjs --provider antigravity [--scope workspace|global] [--dest <dir>]");
+    if (opts.provider !== "antigravity") throw new Error("Usage: install.mjs --provider antigravity [--scope workspace|global] [--dest <dir>] [--probe on]");
     const baseDir =
       opts.scope === "global"
         ? path.join(os.homedir(), ".gemini", "config")
         : path.join(path.resolve(opts.dest ?? process.cwd()), ".agents");
-    for (const file of installAntigravity({ baseDir })) console.log(`wrote ${file}`);
+    for (const file of installAntigravity({ baseDir, probe: opts.probe === "on" })) console.log(`wrote ${file}`);
   } catch (err) {
     console.error(err.message);
     process.exit(1);
