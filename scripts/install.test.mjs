@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { spawnSync } from "node:child_process";
 import { test } from "node:test";
 import { installAntigravity } from "./install.mjs";
 
@@ -56,4 +57,32 @@ test("probe hook is added on request and removed again without it", () => {
 
   installAntigravity({ baseDir, pluginDir: "C:/tools/dev-agent" });
   assert.equal(JSON.parse(fs.readFileSync(file, "utf8"))["dev-agent-probe"], undefined);
+});
+
+test("a file the installer did not write is saved as .bak before it is replaced", () => {
+  const baseDir = tmp();
+  const file = path.join(baseDir, "skills/solve-ticket/SKILL.md");
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  fs.writeFileSync(file, "my own notes");
+  const written = installAntigravity({ baseDir, pluginDir: "/p" });
+  assert.equal(fs.readFileSync(`${file}.bak`, "utf8"), "my own notes");
+  assert.match(written.find((w) => w.startsWith(file)), /previous version saved as/);
+
+  // Our own earlier output is replaced without leaving a backup
+  installAntigravity({ baseDir, pluginDir: "/q" });
+  assert.equal(fs.existsSync(`${file}.bak2`), false);
+});
+
+test("running the installer from a folder with spaces writes the real path", () => {
+  const parent = path.join(tmp(), "my tools");
+  fs.mkdirSync(parent);
+  const copy = path.join(parent, "dev-agent");
+  fs.cpSync(new URL("..", import.meta.url), copy, { recursive: true, filter: (src) => !/[\/](\.git|node_modules)([\/]|$)/.test(src) });
+  const dest = tmp();
+  const res = spawnSync(process.execPath, [path.join(copy, "scripts", "install.mjs"), "--provider", "antigravity", "--dest", dest], { encoding: "utf8" });
+  assert.equal(res.status, 0, res.stderr);
+  const hooks = JSON.parse(fs.readFileSync(path.join(dest, ".agents", "hooks.json"), "utf8"));
+  const command = hooks["dev-agent"].PreToolUse[0].hooks[0].command;
+  assert.match(command, /my tools\/dev-agent\/hooks\/guard\.mjs/);
+  assert.doesNotMatch(command, /%20/);
 });

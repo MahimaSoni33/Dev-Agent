@@ -33,13 +33,15 @@ The flow, agents, config and safety rules are provider-neutral. Each host gets a
 | Host | Install | Start |
 |---|---|---|
 | Claude Code | `claude --plugin-dir C:/NovaDevAgent` (no install) | `/dev-agent:solve-ticket PROJ-145` |
-| Antigravity | `node scripts/install.mjs --provider antigravity` in your workspace (`--scope global` for all) | `/solve-ticket PROJ-145` |
+| Antigravity (IDE and CLI) | `node scripts/setup.mjs` in your workspace (guided; or `scripts/install.mjs --provider antigravity`, `--scope global` for all) | IDE chat: `Use the solve-ticket skill for PROJ-145`. CLI: `agy`, then `/solve-ticket PROJ-145` |
 
 For Antigravity the installer generates `.agents/skills/solve-ticket/SKILL.md` (with this folder's path written in),
 `.agents/agents/repo-builder|repo-reviewer/agent.md` (tools mapped to `run_command`, `view_file`, ...) and merges
 a `dev-agent` entry into `.agents/hooks.json`. Run it again after editing the skill or agents. The guard maps
 Antigravity's tool calls onto the same rules (`providers/tools.mjs`) and answers with `{"decision":"deny"}`.
-Another host means one more mapping in `providers/tools.mjs` and one more generator in `scripts/install.mjs`.
+`node scripts/doctor.mjs` checks the machine and workspace (read-only). The full IDE and CLI guide is Part 2 of
+`docs/GETTING-STARTED.md`. Another host means one more mapping in `providers/tools.mjs` and one more generator in
+`scripts/install.mjs`.
 
 Antigravity is built from its published docs and unit-tested, but not yet run in the real IDE. Check on first use:
 the hooks.json shape, that hooks also fire inside subagents (otherwise the builder is unguarded), and the
@@ -97,6 +99,9 @@ scripts/worktree.mjs           creates and removes worktrees (tested against rea
 hooks/                         safety guard: rules.mjs (logic), guard.mjs (hook), hooks.json
 providers/tools.mjs            per-provider tool-call mapping and guard replies
 scripts/install.mjs            generates the Antigravity skill, agents and hooks
+scripts/setup.mjs, setup.sh, setup.ps1   guided Antigravity setup (Windows, macOS, Linux)
+scripts/doctor.mjs             read-only readiness check
+providers/antigravity.mjs      Antigravity folders, CLI and IDE detection
 ```
 
 ## Safety guard (hooks, not just prompts)
