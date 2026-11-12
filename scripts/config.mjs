@@ -13,7 +13,9 @@ const DEFAULTS = {
   rules: {
     baseBranch: null, // null: each repo's origin/HEAD
     branchPattern: "<Area>/<KEY>/<ShortFeatureName>",
-    planGate: "always",
+    planGate: "auto", // "always": ask on every ticket; "auto": ask only when triage says a human is needed
+    tier: "auto", // or simple | medium | complex to force one execution strategy
+    models: {}, // optional role -> model alias (simple, medium, complex, reviewer); missing: every agent uses the host's model
     commitRequiresApproval: true,
     pushAllowed: false,
     askBeforeTrackerWrite: true,
@@ -52,7 +54,7 @@ export function resolveConfig({ cwd = process.cwd(), configPath } = {}) {
   // The config lives in <root>/.dev-agent/config.json, unless it was passed explicitly
   const root = file ? (path.basename(path.dirname(file)) === ".dev-agent" ? path.dirname(path.dirname(file)) : path.dirname(file)) : cwd;
 
-  const rules = { ...DEFAULTS.rules, ...raw.rules };
+  const rules = { ...DEFAULTS.rules, ...raw.rules, models: { ...DEFAULTS.rules.models, ...raw.rules?.models } };
   const project = raw.project ?? path.basename(root);
   const repoEntries = raw.repos?.length ? raw.repos : discoverRepos(root);
 

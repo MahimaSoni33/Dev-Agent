@@ -18,9 +18,13 @@ claude --plugin-dir C:/NovaDevAgent
 Then `/dev-agent:solve-ticket PROJ-145`. A bare number (`145`) uses `tracker.projectKey`. Plain text with no
 key also works ("free-text mode"), which is also the fallback when the Jira connector is unavailable.
 
+Work is sized first (`scripts/triage.mjs`, no LLM call): a **simple** task takes a short path (compact plan, no plan
+gate, the same independent review as every tier, one commit question); **medium** and **complex** tasks get the full flow.
+Security, deleting data, vague criteria and contract changes always stop for a human. See `docs/OPTIMIZATION.md`.
+
 1. Rewrites any extra free text into a short brief, reviews the ticket (acceptance criteria checked, ambiguities
    listed; stops with questions if criteria are vague), checks each repo, writes `<runs>/<KEY>/plan.md`.
-2. **Gate:** approve and build, approve plan only, change, or stop.
+2. **Gate** (`rules.planGate`: `auto` asks only when needed, `always` asks on every ticket): approve and build, approve plan only, change, or stop.
 3. For each repo, in `buildOrder` layers: creates a worktree and branch, runs the `repo-builder` agent, then the
    `repo-reviewer` agent (one fix round at most).
 4. **Gate:** you choose which repos get a local commit.
@@ -60,7 +64,7 @@ All keys are optional (see `config/example.config.json`):
 | `project` | Label, also the runs sub-folder | folder name |
 | `tracker` | `{ type, projectKey }`; Jira site comes from the connector | jira, no key |
 | `runsDir` | Where plans, reports and worktrees go (outside every repo) | `~/.dev-agent/runs` |
-| `rules` | `baseBranch` (null: repo default), `branchPattern`, commit and push rules | see example |
+| `rules` | `baseBranch` (null: repo default), `branchPattern`, `planGate` (`auto` / `always`), `tier` (`auto` / simple / medium / complex), `models` (role to model alias), commit and push rules | see example |
 | `contextFiles` | Project-wide rules the agent reads once (ownership, contracts, auth) | none |
 | `repos[]` | `id`, `path`, `areaPrefix`, `owns`, `instructions`, `verify`, `run`, `knownIssues` | discovered |
 | `buildOrder` | Layers of repo ids; later layers build against earlier layers' interface | one layer |
@@ -95,6 +99,10 @@ agents/repo-builder.md         builds one repo in its worktree, writes a report
 agents/repo-reviewer.md        read-only review of that repo's diff
 scripts/config.mjs             resolves config, applies defaults, profiles repos
 scripts/detect.mjs             read-only stack, verify and instruction detection
+scripts/triage.mjs             sizes a task (simple / medium / complex) and picks the flow, no LLM call
+scripts/verify.mjs             parallel verify, baseline only for failures, cached by base sha
+scripts/diffcheck.mjs          deterministic review of a worktree change (simple tasks)
+scripts/metrics.mjs            LLM calls, tool calls, human stops, tokens and active time of a run
 scripts/worktree.mjs           creates and removes worktrees (tested against real throwaway git repos)
 hooks/                         safety guard: rules.mjs (logic), guard.mjs (hook), hooks.json
 providers/tools.mjs            per-provider tool-call mapping and guard replies

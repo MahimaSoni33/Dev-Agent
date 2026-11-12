@@ -3,7 +3,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test": "node --test hooks/rules.test.mjs scripts/worktree.test.mjs scripts/config.test.mjs scripts/prompts.test.mjs providers/tools.test.mjs scripts/install.test.mjs providers/usage.test.mjs providers/antigravity.test.mjs scripts/doctor.test.mjs scripts/setup.test.mjs",
+    "test": "node --test hooks/rules.test.mjs scripts/worktree.test.mjs scripts/config.test.mjs scripts/prompts.test.mjs providers/tools.test.mjs scripts/install.test.mjs providers/usage.test.mjs providers/antigravity.test.mjs scripts/doctor.test.mjs scripts/setup.test.mjs scripts/triage.test.mjs scripts/diffcheck.test.mjs scripts/verify.test.mjs scripts/metrics.test.mjs",
+    "metrics": "node scripts/metrics.mjs --table",
     "doctor": "node scripts/doctor.mjs",
     "setup": "node scripts/setup.mjs"
   }

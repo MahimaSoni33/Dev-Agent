@@ -8,7 +8,9 @@
   "rules": {
     "baseBranch": null,
     "branchPattern": "<Area>/<KEY>/<ShortFeatureName>",
-    "planGate": "always",
+    "planGate": "auto",
+    "tier": "auto",
+    "models": {},
     "commitRequiresApproval": true,
     "pushAllowed": false,
     "askBeforeTrackerWrite": true
