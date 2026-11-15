@@ -5,7 +5,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { after, before, test } from "node:test";
-import { check, failureLines } from "./verify.mjs";
+import { check, defaultTmpRoot, failureLines } from "./verify.mjs";
 
 let root, repo, sha;
 const git = (cwd, ...a) => spawnSync("git", a, { cwd, encoding: "utf8" });
@@ -60,4 +60,9 @@ test("when everything passes no baseline is run at all", async () => {
   const r = await check({ repo, dest: repo, baseSha: sha, cmds: [node("process.exit(0)")], tmpRoot: root });
   assert.equal(r.baselineRuns, 0);
   assert.equal(r.results[0].status, "pass");
+});
+
+test("baseline checkouts stay out of the parent of the developer's own checkout", () => {
+  assert.equal(defaultTmpRoot(repo, repo), os.tmpdir());
+  assert.equal(defaultTmpRoot(repo, path.join(root, "wt")), root);
 });

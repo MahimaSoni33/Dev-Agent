@@ -1,5 +1,5 @@
 // Deterministic review of one worktree's uncommitted change: the reviewer for simple tasks, no LLM call.
-//   node diffcheck.mjs --dest <worktree> [--plan-files a,b] [--max-files 5] [--max-lines 200]
+//   node diffcheck.mjs --dest <worktree or repo> [--plan-files a,b] [--ignore a,b] [--max-files 5] [--max-lines 200]
 // Prints { verdict: "pass"|"changes-needed", files, added, removed, findings: [{severity, file, message}] }.
 // Checks what a script can know: planned files, secrets, build output, leftovers, reformat-only edits, size.
 import { spawnSync } from "node:child_process";
@@ -25,18 +25,21 @@ const LEFTOVERS = [
   [/^\+.*(AKIA[0-9A-Z]{16}|-----BEGIN [A-Z ]*PRIVATE KEY-----|\b(?:password|secret|api[_-]?key|token)\b\s*[:=]\s*["'][^"']{8,}["'])/i, "possible hardcoded secret"],
 ];
 
-export function diffCheck({ dest, planFiles = [], maxFiles = 5, maxLines = 200 }) {
+// `ignore` lists files that were already changed before the run (in-place mode): they are not the agent's work
+export function diffCheck({ dest, planFiles = [], maxFiles = 5, maxLines = 200, ignore = [] }) {
   dest = path.resolve(dest);
   const findings = [];
   const add = (severity, file, message) => findings.push({ severity, file, message });
+  const skipped = new Set(ignore.map(norm));
+  const pathspec = ["--", ".", ...[...skipped].map((f) => `:(exclude)${f}`)];
 
   // New files count too: they show up as untracked, not in `git diff`
-  const status = git(dest, ["status", "--porcelain", "-uall"]).split("\n").filter(Boolean);
+  const status = git(dest, ["status", "--porcelain", "-uall"]).split("\n").filter(Boolean).filter((l) => !skipped.has(norm(l.slice(3))));
   const files = status.map((l) => norm(l.slice(3).replace(/^.* -> /, "").replace(/^"|"$/g, "")));
   const untracked = new Set(status.filter((l) => l.startsWith("??")).map((l) => norm(l.slice(3))));
 
-  const stat = git(dest, ["diff", "HEAD", "--numstat"]).split("\n").filter(Boolean).map((l) => l.split("\t"));
-  const loose = new Set(git(dest, ["diff", "HEAD", "--numstat", "-w", "--ignore-blank-lines"]).split("\n").filter(Boolean).map((l) => l.split("\t")[2]));
+  const stat = git(dest, ["diff", "HEAD", "--numstat", ...pathspec]).split("\n").filter(Boolean).map((l) => l.split("\t"));
+  const loose = new Set(git(dest, ["diff", "HEAD", "--numstat", "-w", "--ignore-blank-lines", ...pathspec]).split("\n").filter(Boolean).map((l) => l.split("\t")[2]));
   let added = 0;
   let removed = 0;
   for (const [a, r, file] of stat) {
@@ -46,7 +49,7 @@ export function diffCheck({ dest, planFiles = [], maxFiles = 5, maxLines = 200 }
     if (Number(a) + Number(r) > 0 && !loose.has(file)) add("blocking", norm(file), "whitespace-only change (reformatting the task did not ask for)");
   }
 
-  const patch = git(dest, ["diff", "HEAD", "-U0"]);
+  const patch = git(dest, ["diff", "HEAD", "-U0", ...pathspec]);
   let current = "";
   for (const line of patch.split("\n")) {
     if (line.startsWith("+++ b/")) current = norm(line.slice(6));
@@ -90,12 +93,13 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
       if (!argv[i].startsWith("--") || argv[i + 1] === undefined) throw new Error(`Bad argument: ${argv[i]}`);
       o[argv[i].slice(2)] = argv[i + 1];
     }
-    if (!o.dest) throw new Error("Usage: diffcheck.mjs --dest <worktree> [--plan-files a,b] [--max-files n] [--max-lines n]");
+    if (!o.dest) throw new Error("Usage: diffcheck.mjs --dest <worktree or repo> [--plan-files a,b] [--ignore a,b] [--max-files n] [--max-lines n]");
     console.log(
       JSON.stringify(
         diffCheck({
           dest: o.dest,
           planFiles: o["plan-files"] ? o["plan-files"].split(",") : [],
+          ignore: o.ignore ? o.ignore.split(",") : [],
           maxFiles: o["max-files"] ? Number(o["max-files"]) : undefined,
           maxLines: o["max-lines"] ? Number(o["max-lines"]) : undefined,
         }),

@@ -7,12 +7,12 @@ import fs from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 
-function git(cwd, args) {
+export function git(cwd, args) {
   const res = spawnSync("git", args, { cwd, encoding: "utf8" });
   return { ok: res.status === 0, out: (res.stdout ?? "").trim(), err: (res.stderr ?? "").trim() };
 }
 
-function mustGit(cwd, args) {
+export function mustGit(cwd, args) {
   const res = git(cwd, args);
   if (!res.ok) throw new Error(`git ${args.join(" ")} failed: ${res.err || res.out}`);
   return res.out;

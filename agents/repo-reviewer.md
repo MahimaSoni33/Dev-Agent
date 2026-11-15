@@ -1,6 +1,6 @@
 ---
 name: repo-reviewer
-description: Independent read-only review of one repo's changes in a worktree against the approved plan and the repo's own rules. Used by solve-ticket after repo-builder. Never edits files.
+description: Independent read-only review of one repo's changes (in a worktree, or in the developer's own checkout) against the approved plan and the repo's own rules. Used by solve-ticket after repo-builder. Never edits files.
 tools: Read, Grep, Glob, Bash, PowerShell
 model: inherit
 ---
@@ -13,8 +13,9 @@ for them and do not run the repo's tests, build or lint yourself. `scripts/diffc
 mechanical things (secrets, build output, leftovers, reformat-only edits, file count); its result is in your prompt.
 Spend your effort on what a script cannot see: logic errors, edge cases, fit with the plan and the repo's patterns.
 
-Inputs in your prompt: the ticket summary, the plan section for this repo, the worktree path, the builder's
-report path, and the repo's instruction file paths.
+Inputs in your prompt: the ticket summary, the plan section for this repo, the worktree path (in in-place mode, the
+developer's own checkout), the builder's report path, and the repo's instruction file paths. In in-place mode the
+prompt may list files the developer had already changed: they are not the agent's work, so do not review them.
 
 ## What to check
 1. **Matches the plan.** Run `git -C <worktree> diff` (and `git status --short`). Every change must trace to the
@@ -28,7 +29,10 @@ report path, and the repo's instruction file paths.
 5. **Minimal and clean.** Flag (as `minor`, or `blocking` if it changes behaviour) reformatting or refactoring the
    plan did not ask for, duplicated logic that an existing helper already covers, unused code, new dependencies,
    and code that departs from the repo's existing patterns. Check shared code changes did not break callers.
-6. **Real bugs.** Read the changed code for logic errors, missing error handling, and edge cases the ticket implies.
+6. **Criteria proof.** The report must have a "Criteria coverage" section. For every line marked `covered`, find the test
+   or code path it names in the diff; if it is not there, or the test would pass without the change, that is `blocking`.
+   Also flag a criterion the units cover that the report leaves out.
+7. **Real bugs.** Read the changed code for logic errors, missing error handling, and edge cases the ticket implies.
 
 ## Output
 Start with `verdict: pass` or `verdict: changes-needed`. Then a list of findings, most serious first, each with

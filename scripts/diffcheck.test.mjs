@@ -55,3 +55,13 @@ test("an empty worktree is not a pass", () => {
   fs.rmSync(path.join(dir, "new.js"));
   assert.equal(diffCheck({ dest: dir }).verdict, "changes-needed");
 });
+
+test("files that were already changed before the run (ignore) are not the agent's work", () => {
+  write("b.js", "const b = 3;\nconsole.log(b);\n"); // the developer's own edit, with a leftover the agent did not add
+  write("a.js", "function a() {\n  return 2;\n}\n");
+  const r = diffCheck({ dest: dir, planFiles: ["a.js"], ignore: ["b.js"] });
+  assert.equal(r.verdict, "pass");
+  assert.deepEqual(r.files, ["a.js"]);
+  assert.equal(r.findings.length, 0);
+  git("checkout", "--", "a.js", "b.js");
+});

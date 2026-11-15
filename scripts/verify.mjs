@@ -8,6 +8,7 @@
 //   status: pass | preexisting-fail (the base fails the same way) | new-fail (yours to fix)
 import { spawn, spawnSync } from "node:child_process";
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { removeWorktree } from "./worktree.mjs";
@@ -75,7 +76,12 @@ async function baselineRun({ repo, sha, cmds, timeoutMs, tmpRoot }) {
 
 const tail = (output, n = 30) => output.split("\n").filter((l) => l.trim()).slice(-n).join("\n");
 
-export async function check({ repo, dest, baseSha, cmds, cacheFile, logDir, serial = false, timeoutMs = 600_000, tmpRoot = path.dirname(path.resolve(dest)) }) {
+// Baseline checkouts go next to a worktree, but never into the parent of the developer's own checkout (in-place mode)
+export function defaultTmpRoot(repo, dest) {
+  return path.resolve(repo) === path.resolve(dest) ? os.tmpdir() : path.dirname(path.resolve(dest));
+}
+
+export async function check({ repo, dest, baseSha, cmds, cacheFile, logDir, serial = false, timeoutMs = 600_000, tmpRoot = defaultTmpRoot(repo, dest) }) {
   const started = Date.now();
   repo = path.resolve(repo);
   dest = path.resolve(dest);
