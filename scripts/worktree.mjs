@@ -7,12 +7,12 @@ import fs from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 
-function git(cwd, args) {
+export function git(cwd, args) {
   const res = spawnSync("git", args, { cwd, encoding: "utf8" });
   return { ok: res.status === 0, out: (res.stdout ?? "").trim(), err: (res.stderr ?? "").trim() };
 }
 
-function mustGit(cwd, args) {
+export function mustGit(cwd, args) {
   const res = git(cwd, args);
   if (!res.ok) throw new Error(`git ${args.join(" ")} failed: ${res.err || res.out}`);
   return res.out;
@@ -44,7 +44,16 @@ export function createWorktree({ repo, branch, dest, base, linkDirs = ["node_mod
   base ??= defaultBase(repo);
   // Cut from the freshly fetched remote base when there is a remote, never from a stale local one
   const hasOrigin = git(repo, ["remote"]).out.split(/\s+/).includes("origin");
-  if (hasOrigin) mustGit(repo, ["fetch", "origin", base]);
+  if (hasOrigin) {
+    const fetchRes = git(repo, ["fetch", "origin", base]);
+    if (!fetchRes.ok) {
+      const localRef = git(repo, ["rev-parse", "--verify", "--quiet", `origin/${base}`]);
+      if (!localRef.ok) {
+        throw new Error(`git fetch origin ${base} failed: ${fetchRes.err || fetchRes.out}`);
+      }
+      console.warn(`Warning: git fetch origin ${base} failed, using existing local ref origin/${base}`);
+    }
+  }
   const startPoint = hasOrigin ? `origin/${base}` : base;
   const baseSha = mustGit(repo, ["rev-parse", startPoint]);
 

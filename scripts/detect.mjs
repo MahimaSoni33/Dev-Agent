@@ -45,10 +45,12 @@ function makeTargets(dir) {
 
 function instructionFiles(dir) {
   const found = ["CLAUDE.md", "AGENTS.md", "CONTRIBUTING.md", "README.md"].filter((f) => has(dir, f));
-  const skills = path.join(dir, ".claude", "skills");
-  if (fs.existsSync(skills)) {
+  // Task skills of either host, so the builder never has to search the disk for them
+  for (const host of [".claude", ".agents"]) {
+    const skills = path.join(dir, host, "skills");
+    if (!fs.existsSync(skills)) continue;
     for (const name of fs.readdirSync(skills)) {
-      const file = `.claude/skills/${name}/SKILL.md`;
+      const file = `${host}/skills/${name}/SKILL.md`;
       if (/task|pr/i.test(name) && has(dir, file)) found.unshift(file);
     }
   }

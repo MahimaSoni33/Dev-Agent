@@ -7,8 +7,11 @@
   "runsDir": "~/.dev-agent/runs",
   "rules": {
     "baseBranch": null,
+    "changeTarget": "in-place",
     "branchPattern": "<Area>/<KEY>/<ShortFeatureName>",
-    "planGate": "always",
+    "planGate": "auto",
+    "tier": "auto",
+    "models": {},
     "commitRequiresApproval": true,
     "pushAllowed": false,
     "askBeforeTrackerWrite": true

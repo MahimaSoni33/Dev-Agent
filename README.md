@@ -18,13 +18,17 @@ claude --plugin-dir C:/NovaDevAgent
 Then `/dev-agent:solve-ticket PROJ-145`. A bare number (`145`) uses `tracker.projectKey`. Plain text with no
 key also works ("free-text mode"), which is also the fallback when the Jira connector is unavailable.
 
+Work is sized first (`scripts/triage.mjs`, no LLM call): a **simple** task takes a short path (compact plan, no plan
+gate, the same independent review as every tier, one commit question); **medium** and **complex** tasks get the full flow.
+Security, deleting data, vague criteria and contract changes always stop for a human. See `docs/OPTIMIZATION.md`.
+
 1. Rewrites any extra free text into a short brief, reviews the ticket (acceptance criteria checked, ambiguities
    listed; stops with questions if criteria are vague), checks each repo, writes `<runs>/<KEY>/plan.md`.
-2. **Gate:** approve and build, approve plan only, change, or stop.
-3. For each repo, in `buildOrder` layers: creates a worktree and branch, runs the `repo-builder` agent, then the
-   `repo-reviewer` agent (one fix round at most).
-4. **Gate:** you choose which repos get a local commit.
-5. Writes `summary.md` with branches, results, PR text, manual checks, and your push and cleanup commands.
+2. **Gate** (`rules.planGate`: `auto` asks only when needed, `always` asks on every ticket): approve and build, approve plan only, change, or stop.
+3. For each repo, in `buildOrder` layers: prepares the change target (a feature branch in your own folder, or a
+   worktree; see below), runs the `repo-builder` agent, then the `repo-reviewer` agent (one fix round at most).
+4. **Gate:** you choose which repos get a local commit. It never pushes.
+5. Writes `summary.md` with branches, results, PR text, manual checks, and your push and rollback or cleanup commands.
 
 ## Providers
 
@@ -60,7 +64,7 @@ All keys are optional (see `config/example.config.json`):
 | `project` | Label, also the runs sub-folder | folder name |
 | `tracker` | `{ type, projectKey }`; Jira site comes from the connector | jira, no key |
 | `runsDir` | Where plans, reports and worktrees go (outside every repo) | `~/.dev-agent/runs` |
-| `rules` | `baseBranch` (null: repo default), `branchPattern`, commit and push rules | see example |
+| `rules` | `changeTarget` (`in-place` / `worktree`), `baseBranch` (null: repo default; a repo entry may set its own `baseBranch`), `branchPattern`, `planGate` (`auto` / `always`), `tier` (`auto` / simple / medium / complex), `models` (role to model alias), commit and push rules | see example |
 | `contextFiles` | Project-wide rules the agent reads once (ownership, contracts, auth) | none |
 | `repos[]` | `id`, `path`, `areaPrefix`, `owns`, `instructions`, `verify`, `run`, `knownIssues` | discovered |
 | `buildOrder` | Layers of repo ids; later layers build against earlier layers' interface | one layer |
@@ -73,11 +77,50 @@ The Nova Aid setup is in `config/examples/nova-aid/` (copy both files into `<Nov
 
 ## How code changes reach your repos
 
-The plugin folder only holds instructions and scripts. Code is written in git worktrees of your repos, under
-`<runs>/<project>/<KEY>/worktrees/<repo>`, on new branches cut from the freshly fetched base with `--no-track`
-(or from the local default branch when a repo has no remote). Your checkouts and uncommitted work are not touched.
-`node_modules` is linked from your checkout (extra folders via `--link-dirs`). `git push` from the worktree,
-run by you, publishes the branch.
+The plugin folder only holds instructions and scripts. `rules.changeTarget` decides where the agent writes code:
+
+| | `in-place` (default) | `worktree` |
+|---|---|---|
+| Where | Your own checkout, on a new feature branch | A separate worktree under `<runs>/<project>/<KEY>/worktrees/<repo>` |
+| Review | Right away: `git diff`, your IDE, source control | `git -C <worktree> diff`, or open the folder |
+| Your checkout | Switched to the base, then to the feature branch | Never touched |
+| Can you work meanwhile? | No: it is the folder you are editing | Yes |
+| Use it when | You want to review and commit in the place you already work, one ticket at a time | Long or multi-repo tickets, or you keep working while it builds |
+
+Set it in `.dev-agent/config.json` (`"rules": { "changeTarget": "worktree" }`), per run with
+`node scripts/config.mjs --change-target worktree` (the skill passes this when you ask for a worktree), or with the
+environment variable `DEV_AGENT_CHANGE_TARGET`. Order: flag, then env, then config, then the default. If it is not set
+anywhere, the first run (or `node scripts/setup.mjs`) asks once and saves your choice. Unattended runs use the default
+and save nothing.
+
+**In-place flow** (`scripts/target.mjs`), all before any code is written:
+1. Refuses to start in the middle of a merge, rebase, cherry-pick or bisect, or on a detached HEAD.
+2. If you have uncommitted changes, it asks: **continue** (your files are recorded and reported apart from the
+   agent's), **stash first** (named `dev-agent: before <KEY>`), or **cancel**. An unattended run cancels.
+3. Asks which branch is the latest (`main`, `develop`, ...) and remembers it per repo.
+4. Switches to it and runs `git pull --ff-only origin <branch>`. It continues only when git says it is up to date or
+   fast-forwarded; a diverged branch stops and puts your checkout back. If origin is unreachable it asks whether to
+   continue from the local branch.
+5. Cuts the feature branch (`rules.branchPattern`, `--no-track`; a taken name gets a suggested one) and builds there.
+
+It never pushes. After the build you get a summary: files modified, added and deleted, `git diff --stat`, where the
+changes live, which files were already yours, and which changed without being in the builder's report (you may have
+edited them during the run). Changes stay uncommitted until you approve a local commit (or commit yourself).
+Commit and push from the same folder:
+
+```bash
+git add <files>
+git commit -m "PROJ-150: <summary>"
+git push -u origin <feature-branch>
+```
+
+The summary also prints the **rollback** commands. They keep the agent's work in a stash, switch you back to your
+original branch, and (optionally) delete the feature branch; if you chose "stash first", they say how to get your own
+stash back.
+
+**Worktree flow:** the branch is cut from the freshly fetched base with `--no-track` (or from the local default branch
+when a repo has no remote) into a worktree. `node_modules` is linked from your checkout (extra folders via
+`--link-dirs`). `git push` from the worktree, run by you, publishes the branch.
 
 ## What it cannot do
 
@@ -95,7 +138,12 @@ agents/repo-builder.md         builds one repo in its worktree, writes a report
 agents/repo-reviewer.md        read-only review of that repo's diff
 scripts/config.mjs             resolves config, applies defaults, profiles repos
 scripts/detect.mjs             read-only stack, verify and instruction detection
+scripts/triage.mjs             sizes a task (simple / medium / complex) and picks the flow, no LLM call
+scripts/verify.mjs             parallel verify, baseline only for failures, cached by base sha
+scripts/diffcheck.mjs          deterministic review of a worktree change (simple tasks)
+scripts/metrics.mjs            LLM calls, tool calls, human stops, tokens and active time of a run
 scripts/worktree.mjs           creates and removes worktrees (tested against real throwaway git repos)
+scripts/target.mjs             picks in-place or worktree: dirty check, base pull, feature branch, rollback, change summary
 hooks/                         safety guard: rules.mjs (logic), guard.mjs (hook), hooks.json
 providers/tools.mjs            per-provider tool-call mapping and guard replies
 scripts/install.mjs            generates the Antigravity skill, agents and hooks

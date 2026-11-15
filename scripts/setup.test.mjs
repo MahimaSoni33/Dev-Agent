@@ -70,8 +70,9 @@ test("a single repo gets no config, and AGENTS.md is only made when asked", asyn
   const ws = tmp();
   repo(ws);
   await setup({ dest: ws, prompter: scripted("y", "n"), log: quiet, doctor });
-  assert.equal(fs.existsSync(path.join(ws, ".dev-agent")), false);
   assert.equal(fs.existsSync(path.join(ws, "AGENTS.md")), false);
+  // The only thing written is the saved change target
+  assert.deepEqual(JSON.parse(fs.readFileSync(path.join(ws, ".dev-agent", "config.json"), "utf8")), { rules: { changeTarget: "in-place" } });
 
   const ws2 = tmp();
   repo(ws2);
@@ -92,4 +93,26 @@ test("--yes installs without asking and keeps a workspace path with spaces intac
   assert.equal(res.installed, true);
   const skill = fs.readFileSync(path.join(ws, ".agents", "skills", "solve-ticket", "SKILL.md"), "utf8");
   assert.doesNotMatch(skill, /%20/);
+});
+
+test("the change target is asked once and the choice is saved", async () => {
+  const ws = tmp();
+  repo(ws);
+  await setup({ dest: ws, prompter: scripted("y", "n", "2"), log: quiet, doctor }); // install, no AGENTS.md, worktree
+  const cfg = JSON.parse(fs.readFileSync(path.join(ws, ".dev-agent", "config.json"), "utf8"));
+  assert.equal(cfg.rules.changeTarget, "worktree");
+});
+
+test("--yes writes no change target, and an existing config is left alone", async () => {
+  const ws = tmp();
+  repo(ws);
+  await setup({ dest: ws, yes: true, log: quiet, doctor });
+  assert.equal(fs.existsSync(path.join(ws, ".dev-agent")), false);
+
+  const ws2 = tmp();
+  repo(path.join(ws2, "svc", "svc"));
+  fs.mkdirSync(path.join(ws2, ".dev-agent"));
+  fs.writeFileSync(path.join(ws2, ".dev-agent", "config.json"), '{"project":"mine"}');
+  await setup({ dest: ws2, prompter: scripted("y"), log: quiet, doctor });
+  assert.equal(fs.readFileSync(path.join(ws2, ".dev-agent", "config.json"), "utf8"), '{"project":"mine"}');
 });

@@ -9,6 +9,7 @@ import readline from "node:readline/promises";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { globalDir, workspaceDir } from "../providers/antigravity.mjs";
+import { resolveConfig, saveChangeTarget } from "./config.mjs";
 import { format, runDoctor } from "./doctor.mjs";
 import { installAntigravity } from "./install.mjs";
 
@@ -140,6 +141,20 @@ export async function setup({ dest = process.cwd(), scope = "workspace", yes = f
         log(`  wrote ${posix(root)}`);
       }
     }
+  }
+
+  // Where the agent writes code changes. Asked once and saved, so the run itself does not ask again.
+  const current = resolveConfig({ cwd: workspace });
+  if (current.changeTargetSource === "default" && !yes && !current.configFile) {
+    log("\n  Where should the agent write its code changes?");
+    log("    1) in-place: your current folder, on a new feature branch. You review with git diff and your IDE. (default)");
+    log("    2) worktree: a separate git worktree, isolated from your folder.");
+    const pick = await prompter.ask("  Choose 1 or 2 [1]", "1");
+    const choice = ["2", "w", "worktree"].includes(pick) ? "worktree" : "in-place";
+    log(`  saved to ${posix(saveChangeTarget(current, choice))}: rules.changeTarget = ${choice}`);
+  } else if (current.changeTargetSource === "default") {
+    // An existing config is never rewritten here; the first run asks and saves the choice
+    log('  Changes are written in-place by default. Set rules.changeTarget to "worktree" in your config to isolate them.');
   }
 
   log("\nStep 4 of 4: final check");
