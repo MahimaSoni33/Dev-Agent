@@ -6,6 +6,7 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { detectAntigravity, defaultRun, globalDir, workspaceDir } from "../providers/antigravity.mjs";
+import { detectKiro, globalDir as kiroGlobalDir, workspaceDir as kiroWorkspaceDir } from "../providers/kiro.mjs";
 import { resolveConfig } from "./config.mjs";
 
 const PLUGIN_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -72,6 +73,56 @@ function jiraCheck(workspace, home, fs_) {
     if (hit) return check("ok", `Jira connection found in MCP config: "${hit}"`, file);
   }
   return check("warn", "No Jira / Atlassian MCP server found in the Antigravity MCP config", "Only needed to read tickets by key. Without it, give the task as plain text.", "Add it in Antigravity: IDE MCP Store or CLI /mcp. See the guide");
+}
+
+// ---- Kiro (optional: it never makes the report "not ready" on its own) ----
+const KIRO_FILES = ["steering/dev-agent.md", "agents/repo-builder.json", "agents/repo-reviewer.json", "hooks/dev-agent-guard.kiro.hook", "hooks/dev-agent-usage.kiro.hook"];
+
+function kiroInstallState(baseDir, pluginDir, { exists, readFile }) {
+  const missing = KIRO_FILES.filter((f) => !exists(path.join(baseDir, f)));
+  const hook = readJson(path.join(baseDir, "hooks", "dev-agent-guard.kiro.hook"), exists, readFile);
+  const guardDir = /node "(.+)\/hooks\/guard\.mjs"/.exec(hook?.then?.command ?? "")?.[1] ?? null;
+  return {
+    anyFile: missing.length < KIRO_FILES.length,
+    missing,
+    guardDir,
+    guardExists: guardDir ? exists(path.join(guardDir, "hooks", "guard.mjs")) : false,
+    samePlugin: guardDir ? posix(path.resolve(guardDir)) === posix(path.resolve(pluginDir)) : false,
+  };
+}
+
+function kiroChecks({ workspace, home, env, platform, run, exists, readFile, pluginDir }) {
+  const kiro = detectKiro({ platform, home, env, run, exists });
+  const out = [];
+  const installFix = (scope) => `node ${posix(pluginDir)}/scripts/install.mjs --provider kiro${scope === "global" ? " --scope global" : ` --dest "${posix(workspace)}"`}`;
+
+  if (kiro.cli.found) {
+    out.push(
+      kiro.cli.meetsMinimum
+        ? check("ok", `Kiro CLI ${kiro.cli.version}`, kiro.cli.onPath ? "on PATH" : kiro.cli.path)
+        : check("warn", `Kiro CLI ${kiro.cli.version ?? "(version unknown)"} is older than ${kiro.cli.minimum}`, "Headless mode and API-key sign-in need 2.0 or later", "Update Kiro CLI (see kiro.dev/docs/cli)"),
+    );
+    // The key itself is never read or shown; only whether it is set
+    if (kiro.auth.signedIn) out.push(check("ok", "Kiro CLI is signed in", `${kiro.auth.whoami}${kiro.auth.apiKeySet ? " (KIRO_API_KEY is also set; a browser sign-in takes precedence)" : ""}`));
+    else if (kiro.auth.apiKeySet) out.push(check("info", "Kiro CLI: KIRO_API_KEY is set (value not shown), but `kiro-cli whoami` did not confirm a sign-in", "API keys work only on Kiro Pro, Pro+, Pro Max and Power plans", "Run `kiro-cli whoami` to see what Kiro reports"));
+    else out.push(check("warn", "Kiro CLI is not signed in", "", "Run `kiro-cli login`, or set KIRO_API_KEY for headless runs (eligible plans only)"));
+  }
+  for (const note of kiro.notes) out.push(check("warn", note));
+  if (kiro.ide.found) out.push(check("ok", `Kiro IDE found${kiro.ide.version ? ` (version ${kiro.ide.version})` : ""}`, kiro.ide.path ?? "launcher on PATH"));
+
+  const detected = kiro.cli.found || kiro.ide.found;
+  const scopes = [["Workspace", kiroWorkspaceDir(workspace), "workspace"], ["Personal", kiroGlobalDir(home), "global"]];
+  const states = scopes.map(([label, dir, scope]) => ({ label, dir, scope, s: kiroInstallState(dir, pluginDir, { exists, readFile }) }));
+  for (const { label, dir, scope, s } of states) {
+    if (!s.anyFile) continue;
+    if (s.missing.length) out.push(check("warn", `Kiro ${label.toLowerCase()} install is incomplete`, `missing: ${s.missing.join(", ")}`, installFix(scope)));
+    else if (!s.guardExists) out.push(check("warn", `Kiro ${label.toLowerCase()} safety hook points at a folder that no longer exists`, s.guardDir ?? "", installFix(scope)));
+    else if (!s.samePlugin) out.push(check("warn", `Kiro ${label.toLowerCase()} install was made from another dev-agent folder`, `${s.guardDir} (this one: ${posix(pluginDir)})`, installFix(scope)));
+    else out.push(check("ok", `Kiro ${label.toLowerCase()} install is in place`, dir));
+  }
+  if (!detected && !states.some((x) => x.s.anyFile)) out.push(check("info", "Kiro not detected. Only needed if you want to use Kiro (IDE or CLI)", "Detection is best effort: the docs list no install folders", "Install from https://kiro.dev, then run node scripts/install.mjs --provider kiro"));
+  else if (detected && !states.some((x) => x.s.anyFile)) out.push(check("info", "Kiro is installed but dev-agent is not installed for it", "", installFix("workspace")));
+  return { kiro, checks: out };
 }
 
 export function runDoctor({
@@ -150,7 +201,10 @@ export function runDoctor({
 
   checks.push(jiraCheck(workspace, home, fs_));
 
-  return { ok: !checks.some((c) => c.level === "fail"), checks, antigravity: ag };
+  const kiro = kiroChecks({ workspace, home, env, platform, run, exists, readFile, pluginDir });
+  checks.push(...kiro.checks);
+
+  return { ok: !checks.some((c) => c.level === "fail"), checks, antigravity: ag, kiro: kiro.kiro };
 }
 
 const MARK = { ok: "[ ok ]", warn: "[warn]", fail: "[FAIL]", info: "[info]" };

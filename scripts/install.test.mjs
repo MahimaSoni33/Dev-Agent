@@ -2,9 +2,10 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
 import { test } from "node:test";
-import { installAntigravity } from "./install.mjs";
+import { installAntigravity, installKiro } from "./install.mjs";
 
 const tmp = () => fs.mkdtempSync(path.join(os.tmpdir(), "dev-agent-install-"));
 
@@ -85,4 +86,59 @@ test("running the installer from a folder with spaces writes the real path", () 
   const command = hooks["dev-agent"].PreToolUse[0].hooks[0].command;
   assert.match(command, /my tools\/dev-agent\/hooks\/guard\.mjs/);
   assert.doesNotMatch(command, /%20/);
+});
+
+// ---- Kiro ----
+test("kiro install writes steering, two agents and IDE hooks", () => {
+  const baseDir = tmp();
+  installKiro({ baseDir, pluginDir: "C:/tools/dev-agent" });
+
+  const steering = fs.readFileSync(path.join(baseDir, "steering/dev-agent.md"), "utf8");
+  assert.match(steering, /^---\ninclusion: manual\n---/);
+  assert.match(steering, /`C:\/tools\/dev-agent`/);
+  assert.doesNotMatch(steering, /<!--plugin-->|argument-hint/);
+
+  const builder = JSON.parse(fs.readFileSync(path.join(baseDir, "agents/repo-builder.json"), "utf8"));
+  assert.equal(builder.name, "repo-builder");
+  assert.ok(builder.tools.includes("execute_bash") && builder.tools.includes("fs_write"));
+  assert.deepEqual([...builder.allowedTools].sort(), ["fs_read", "glob", "grep"]);
+  assert.match(builder.hooks.preToolUse[0].command, /C:\/tools\/dev-agent\/hooks\/guard\.mjs/);
+  assert.match(builder.hooks.stop[0].command, /kiro-usage\.mjs" --surface cli/);
+  const reviewer = JSON.parse(fs.readFileSync(path.join(baseDir, "agents/repo-reviewer.json"), "utf8"));
+  assert.ok(!reviewer.tools.includes("fs_write"));
+
+  const usage = JSON.parse(fs.readFileSync(path.join(baseDir, "hooks/dev-agent-usage.kiro.hook"), "utf8"));
+  assert.equal(usage.when.type, "agentStop");
+  assert.match(usage.then.command, /--surface ide/);
+  assert.equal(JSON.parse(fs.readFileSync(path.join(baseDir, "hooks/dev-agent-guard.kiro.hook"), "utf8")).when.type, "preToolUse");
+});
+
+test("kiro probe hooks are added on request and removed again without it", () => {
+  const baseDir = tmp();
+  installKiro({ baseDir, pluginDir: "/p", probe: true });
+  const probe = path.join(baseDir, "hooks/dev-agent-probe.kiro.hook");
+  assert.ok(fs.existsSync(probe));
+  assert.match(fs.readFileSync(path.join(baseDir, "agents/repo-builder.json"), "utf8"), /dump\.mjs/);
+  installKiro({ baseDir, pluginDir: "/p" });
+  assert.equal(fs.existsSync(probe), false);
+  assert.doesNotMatch(fs.readFileSync(path.join(baseDir, "agents/repo-builder.json"), "utf8"), /dump\.mjs/);
+});
+
+test("kiro: a file the installer did not write is backed up, our own output is not", () => {
+  const baseDir = tmp();
+  const file = path.join(baseDir, "agents/repo-builder.json");
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  fs.writeFileSync(file, '{"name":"mine"}');
+  installKiro({ baseDir, pluginDir: "/p" });
+  assert.equal(fs.readFileSync(`${file}.bak`, "utf8"), '{"name":"mine"}');
+  installKiro({ baseDir, pluginDir: "/q" });
+  assert.equal(fs.existsSync(`${file}.bak2`), false);
+});
+
+test("the installer command accepts --provider kiro", () => {
+  const dest = tmp();
+  const script = fileURLToPath(new URL("./install.mjs", import.meta.url));
+  const res = spawnSync(process.execPath, [script, "--provider", "kiro", "--dest", dest], { encoding: "utf8" });
+  assert.equal(res.status, 0, res.stderr);
+  assert.ok(fs.existsSync(path.join(dest, ".kiro", "agents", "repo-builder.json")));
 });

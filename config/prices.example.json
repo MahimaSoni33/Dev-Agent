@@ -1,0 +1,6 @@
+{
+  "_note": "USD per 1M tokens, matched by model-name substring. These zeros are placeholders: put your plan's real prices here, then save as config/prices.json.",
+  "opus": { "input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0 },
+  "sonnet": { "input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0 },
+  "haiku": { "input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0 }
+}

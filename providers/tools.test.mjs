@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { spawnSync } from "node:child_process";
 import { check } from "../hooks/rules.mjs";
-import { normalizeToolCall, verdict } from "./tools.mjs";
+import { expandToolCalls, normalizeToolCall, verdict } from "./tools.mjs";
 
 const guard = (event) =>
   spawnSync("node", [new URL("../hooks/guard.mjs", import.meta.url).pathname.replace(/^\/(\w:)/, "$1")], {
@@ -58,4 +58,40 @@ test("guard.mjs end to end", () => {
   assert.equal(blocked.status, 0);
   assert.equal(JSON.parse(blocked.stdout).decision, "deny");
   assert.equal(JSON.parse(guard(ag("run_command", { CommandLine: "git status" })).stdout).decision, "allow");
+});
+
+const kiro = (tool_name, tool_input) => ({ hook_event_name: "preToolUse", cwd: "/repo", tool_name, tool_input });
+
+test("Kiro tool calls are normalised and judged by the same rules", () => {
+  const push = normalizeToolCall(kiro("execute_bash", { command: "git push origin main" }));
+  assert.deepEqual(push, { provider: "kiro", tool: "Bash", input: { command: "git push origin main" } });
+  assert.ok(check(push.tool, push.input, {}));
+  assert.equal(normalizeToolCall(kiro("fs_write", { command: "create", path: "/r/a.js" })).tool, "Write");
+  assert.equal(normalizeToolCall(kiro("fs_write", { command: "str_replace", path: "/r/a.js" })).tool, "Edit");
+  const env = normalizeToolCall(kiro("fs_read", { operations: [{ mode: "Line", path: "/repo/.env.local" }] }));
+  assert.ok(check(env.tool, env.input, {}));
+  const ok = normalizeToolCall(kiro("execute_bash", { command: "git status" }));
+  assert.equal(check(ok.tool, ok.input, {}), null);
+});
+
+test("a Kiro read of several files is judged file by file", () => {
+  const calls = expandToolCalls(kiro("fs_read", { operations: [{ path: "/repo/a.js" }, { path: "/repo/.env" }] }));
+  assert.equal(calls.length, 2);
+  assert.equal(calls.filter((c) => check(c.tool, c.input, {})).length, 1);
+});
+
+test("Claude tool names are not mistaken for Kiro ones", () => {
+  assert.equal(normalizeToolCall({ tool_name: "Bash", tool_input: { command: "ls" } }).provider, "claude");
+  assert.equal(normalizeToolCall({ tool_name: "toString", tool_input: {} }).provider, "claude");
+});
+
+test("Kiro blocks with exit code 2 and the reason on stderr", () => {
+  assert.deepEqual(verdict("kiro", "no"), { stdout: "", stderr: "Blocked by dev-agent: no", code: 2 });
+  assert.equal(verdict("kiro", null).code, 0);
+});
+
+test("guard.mjs end to end for Kiro", () => {
+  assert.equal(guard(kiro("execute_bash", { command: "git push" })).status, 2);
+  assert.equal(guard(kiro("fs_read", { operations: [{ path: "/a.js" }, { path: "/x/.env" }] })).status, 2);
+  assert.equal(guard(kiro("execute_bash", { command: "git status" })).status, 0);
 });

@@ -168,7 +168,9 @@ In the Antigravity CLI, from that folder:
     agy
     /solve-ticket PROJ-123
 Credentials: dev-agent needs no API key. Sign in to Antigravity itself (IDE: first launch; CLI: run \`agy\` once
-interactively). To read Jira tickets by key, connect the Atlassian MCP server inside Antigravity (see the guide).`);
+interactively). To read Jira tickets by key, connect the Atlassian MCP server inside Antigravity (see the guide).
+Using Kiro (IDE or CLI) as well? node ${posix(PLUGIN_DIR)}/scripts/install.mjs --provider kiro --dest "${posix(workspace)}"
+then node ${posix(PLUGIN_DIR)}/scripts/doctor.mjs checks it. See docs/KIRO.md.`);
   return { installed: true, ok: after.ok };
 }
 
