@@ -38,6 +38,13 @@ The flow, agents, config and safety rules are provider-neutral. Each host gets a
 |---|---|---|
 | Claude Code | `claude --plugin-dir C:/NovaDevAgent` (no install) | `/dev-agent:solve-ticket PROJ-145` |
 | Antigravity (IDE and CLI) | `node scripts/setup.mjs` in your workspace (guided; or `scripts/install.mjs --provider antigravity`, `--scope global` for all) | IDE chat: `Use the solve-ticket skill for PROJ-145`. CLI: `agy`, then `/solve-ticket PROJ-145` |
+| Kiro (IDE and CLI) | `node scripts/install.mjs --provider kiro` (`--scope global` for all workspaces) | IDE chat: `#dev-agent`, then describe the ticket. CLI: see `docs/KIRO.md` |
+
+Kiro is a host like Antigravity: no API call is made and no key is stored. Sign in to Kiro itself (`kiro-cli login`, or
+`KIRO_API_KEY` for headless runs on eligible plans). Kiro meters in **credits**, not tokens, and its docs describe no way to read
+them from a hook, so a Kiro session records its request count and shows credits as *unavailable* unless you record the figure you
+read in Kiro (`node scripts/usage.mjs credits ...`, labelled user-reported). `node scripts/usage.mjs show --ticket KEY`
+lists every session with tokens and credits kept apart. Setup, hook limits and what is unverified: `docs/KIRO.md`.
 
 For Antigravity the installer generates `.agents/skills/solve-ticket/SKILL.md` (with this folder's path written in),
 `.agents/agents/repo-builder|repo-reviewer/agent.md` (tools mapped to `run_command`, `view_file`, ...) and merges
@@ -142,6 +149,7 @@ scripts/triage.mjs             sizes a task (simple / medium / complex) and pick
 scripts/verify.mjs             parallel verify, baseline only for failures, cached by base sha
 scripts/diffcheck.mjs          deterministic review of a worktree change (simple tasks)
 scripts/metrics.mjs            LLM calls, tool calls, human stops, tokens and active time of a run
+scripts/scorecard.mjs          tokens, estimated cost and delivery quality of one run (npm run scorecard -- --run-dir runs/KEY --write)
 scripts/worktree.mjs           creates and removes worktrees (tested against real throwaway git repos)
 scripts/target.mjs             picks in-place or worktree: dirty check, base pull, feature branch, rollback, change summary
 hooks/                         safety guard: rules.mjs (logic), guard.mjs (hook), hooks.json
@@ -150,6 +158,10 @@ scripts/install.mjs            generates the Antigravity skill, agents and hooks
 scripts/setup.mjs, setup.sh, setup.ps1   guided Antigravity setup (Windows, macOS, Linux)
 scripts/doctor.mjs             read-only readiness check
 providers/antigravity.mjs      Antigravity folders, CLI and IDE detection
+providers/kiro.mjs             Kiro folders, CLI and IDE detection, sign-in state (never reads the API key)
+providers/usage.mjs            per-session usage records (tokens or credits) and the append-only usage log
+hooks/kiro-usage.mjs           Kiro stop hook: counts requests per session, prints one usage line
+scripts/usage.mjs              session usage report, history, and user-reported Kiro credits (npm run usage -- --ticket KEY)
 ```
 
 ## Safety guard (hooks, not just prompts)

@@ -4,7 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
-import { installAntigravity } from "./install.mjs";
+import { installAntigravity, installKiro } from "./install.mjs";
 import { format, runDoctor } from "./doctor.mjs";
 
 const PLUGIN = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -118,4 +118,65 @@ test("the report is stable on a different platform", () => {
   const r = runDoctor({ cwd: ws, home: tmp(), platform: "darwin", run: machine(null), exists: (p) => fs.existsSync(p), pluginDir: PLUGIN });
   assert.match(find(r, /Antigravity CLI/).fix, /curl -fsSL .*install\.sh/);
   assert.ok(Object.keys(levels(r)).length > 5);
+});
+
+// ---- Kiro: optional checks, never a reason for "not ready" ----
+const kiroMachine = (answers) => (cmd, args) => (cmd === "git" ? "git version 2.40.0" : cmd === "agy" ? "agy 2.0.0" : (answers[`${cmd} ${args[0]}`] ?? null));
+const noLocal = () => ({ LOCALAPPDATA: tmp() }); // keeps a real Kiro on this machine out of the picture
+
+test("without Kiro the report only gains an info line and stays ready", () => {
+  const ws = tmp();
+  gitRepo(ws);
+  installAntigravity({ baseDir: path.join(ws, ".agents"), pluginDir: PLUGIN });
+  const r = runDoctor({ cwd: ws, home: tmp(), env: noLocal(), run: kiroMachine({}), pluginDir: PLUGIN, exists: (p) => fs.existsSync(p) });
+  assert.equal(r.ok, true, format(r));
+  assert.equal(find(r, /Kiro not detected/).level, "info");
+});
+
+test("Kiro CLI signed in with an install in place is ok", () => {
+  const ws = tmp();
+  const home = tmp();
+  gitRepo(ws);
+  installAntigravity({ baseDir: path.join(ws, ".agents"), pluginDir: PLUGIN });
+  installKiro({ baseDir: path.join(ws, ".kiro"), pluginDir: PLUGIN });
+  const run = kiroMachine({ "kiro-cli --version": "kiro-cli 2.1.0", "kiro-cli whoami": "Logged in as someone" });
+  const r = runDoctor({ cwd: ws, home, env: noLocal(), run, pluginDir: PLUGIN });
+  assert.equal(find(r, /Kiro CLI 2\.1\.0/).level, "ok");
+  assert.equal(find(r, /Kiro CLI is signed in/).level, "ok");
+  assert.equal(find(r, /Kiro workspace install is in place/).level, "ok");
+});
+
+test("Kiro CLI that is not signed in is a warning with the fix, and an API key is never printed", () => {
+  const ws = tmp();
+  gitRepo(ws);
+  installAntigravity({ baseDir: path.join(ws, ".agents"), pluginDir: PLUGIN });
+  const run = kiroMachine({ "kiro-cli --version": "kiro-cli 2.0.0" });
+  const noAuth = runDoctor({ cwd: ws, home: tmp(), env: noLocal(), run, pluginDir: PLUGIN });
+  assert.equal(find(noAuth, /not signed in/).level, "warn");
+  assert.match(find(noAuth, /not signed in/).fix, /kiro-cli login/);
+  assert.equal(noAuth.ok, true);
+
+  const withKey = runDoctor({ cwd: ws, home: tmp(), env: { ...noLocal(), KIRO_API_KEY: "ksk_TOPSECRET" }, run, pluginDir: PLUGIN });
+  assert.match(find(withKey, /KIRO_API_KEY is set/).title, /value not shown/);
+  assert.doesNotMatch(JSON.stringify(withKey) + format(withKey), /TOPSECRET/);
+});
+
+test("a partial or stale Kiro install warns without failing the report", () => {
+  const ws = tmp();
+  gitRepo(ws);
+  installAntigravity({ baseDir: path.join(ws, ".agents"), pluginDir: PLUGIN });
+  installKiro({ baseDir: path.join(ws, ".kiro"), pluginDir: PLUGIN });
+  fs.rmSync(path.join(ws, ".kiro", "agents", "repo-reviewer.json"));
+  const run = kiroMachine({ "kiro-cli --version": "kiro-cli 2.0.0", "kiro-cli whoami": "ok" });
+  const r = runDoctor({ cwd: ws, home: tmp(), env: noLocal(), run, pluginDir: PLUGIN });
+  assert.equal(find(r, /Kiro workspace install is incomplete/).level, "warn");
+  assert.equal(r.ok, true);
+});
+
+test("a Kiro CLI older than 2.0 is a warning", () => {
+  const ws = tmp();
+  gitRepo(ws);
+  installAntigravity({ baseDir: path.join(ws, ".agents"), pluginDir: PLUGIN });
+  const r = runDoctor({ cwd: ws, home: tmp(), env: noLocal(), run: kiroMachine({ "kiro-cli --version": "kiro-cli 1.9.0" }), pluginDir: PLUGIN });
+  assert.equal(find(r, /Kiro CLI 1\.9\.0 is older/).level, "warn");
 });
